@@ -50,7 +50,7 @@ export function App() {
     const link = document.querySelector("link[rel='icon']") ?? document.head.appendChild(Object.assign(document.createElement("link"), { rel: "icon" }));
     link.setAttribute("href", "data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>"));
   }, []);
-  const data = useApiData();
+  const { data, stale } = useApiData();
   const now = useClock();
   const idx = buildIndexes(data);
   const { toasts, dismiss } = useGoalToasts(idx, now.key);
@@ -145,6 +145,15 @@ export function App() {
           <div className="tt-flash">
             <span className="tt-blink" style={{ color: "#fff" }}>⚠</span> {flash}
             <div style={{ color: "#fff", fontSize: ".7em" }}>PROXIMO PARTIDO EN LA AGENDA (P100)</div>
+          </div>
+        )}
+
+        {/* datos congelados (cuota del día agotada o fuente caída) — banda fija,
+            honesta y no bloqueante: la agenda y los canales siguen andando */}
+        {stale && (
+          <div className="tt-bar mt-1" style={{ color: "var(--tt-y)" }}>
+            <span className="tt-blink">⚠</span> DATOS CONGELADOS — SE AGOTO LA CUOTA DIARIA O SE CAYO LA FUENTE.
+            LOS HORARIOS, CANALES Y EL VISOR SIGUEN ANDANDO; LOS MARCADORES VUELVEN SOLOS.
           </div>
         )}
 

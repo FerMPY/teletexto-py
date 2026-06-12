@@ -148,7 +148,13 @@ export function Agenda({ idx, nowK, today, onWatch, onProde, usage }: { idx: Ind
         LOS CANALES EN COLOR FIGURAN EN LA GRILLA; LOS GRISES NO, PERO LA GRILLA A VECES FALLA — PROBALOS IGUAL.
         <br />
         HORA PARAGUAYA · MARCADORES: API PUBLICA FIFA · GRILLA: @PUNTAJE_IDEAL / @FUTBOLENLATV
-        {usage && ` · USO API HOY: ${usage.today ?? usage.served}/10000 · VISITAS HOY: ${usage.visits ?? 0}`}
+        {usage && (
+          <span style={(usage.today ?? usage.served) > 9000 ? { color: C.r } : undefined}>
+            {` · USO API HOY: ${usage.today ?? usage.served}/10000`}
+            {(usage.today ?? usage.served) > 9000 && " ⚠ CERCA DEL LIMITE"}
+          </span>
+        )}
+        {usage && ` · VISITAS HOY: ${usage.visits ?? 0}`}
       </div>
     </div>
   );
