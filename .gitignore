@@ -1,0 +1,4 @@
+.lakebed/
+.env.lakebed.server
+
+.DS_Store
