@@ -3,9 +3,11 @@
 import { useState } from "preact/hooks";
 import { MATCHES } from "../shared/matches";
 import { CH_ORDER, CHANNELS, kickoffEpoch } from "../shared/mundial";
-import type { ChannelKey, Match } from "../shared/mundial";
+import type { ChannelKey, Match, StandingGroup } from "../shared/mundial";
+import { Albirroja } from "./albirroja";
+import { downloadIcs } from "./ics";
 import { C, Live, Sep, TitleBar } from "./teletext";
-import { chOf, countdown, dayLabel, goalsFor, liveMatches, matchState, mKey, nextMatch, nextPy } from "./state";
+import { chOf, countdown, dayLabel, goalsFor, liveMatches, matchState, mKey, nextMatch, nextPy, scoreStr } from "./state";
 import type { Indexes } from "./state";
 
 type Watch = (m: Match, ch: ChannelKey) => void;
@@ -42,7 +44,7 @@ function ChannelBtns({ m, onWatch }: { m: Match; onWatch: Watch }) {
 function Row({ m, idx, nowK, onWatch, onProde }: { m: Match; idx: Indexes; nowK: string; onWatch: Watch; onProde?: (mk: string) => void }) {
   const st = matchState(m, idx, nowK);
   const goals = goalsFor(m, idx);
-  const score = st.hs != null ? `${st.hs}-${st.as}` : "vs";
+  const score = scoreStr(st) ?? "vs";
   return (
     <div className={`tt-row${m.py ? " py" : ""}${st.final && !st.live ? " past" : ""}`}>
       <span style={{ color: C.c }}>{m.t}</span>
@@ -54,6 +56,9 @@ function Row({ m, idx, nowK, onWatch, onProde }: { m: Match; idx: Indexes; nowK:
       {onProde && Date.now() < kickoffEpoch(m) && (
         <button className="tt-btn" style={{ color: C.m }} onClick={() => onProde(mKey(m))} title="Pronosticá este partido en el prode (P300)">PRODE</button>
       )}
+      {Date.now() < kickoffEpoch(m) && (
+        <button className="tt-btn" onClick={() => downloadIcs([m], `${m.a} vs ${m.b}`)} title="Agendar este partido en tu calendario (.ics) — con aviso 30 min antes">📅</button>
+      )}
       {goals.length > 0 && (
         <div className="w-full pl-[3.2em]" style={{ color: C.fg, fontSize: ".85em" }}>
           ⚽ {goals.map((e) => `${e.name}${e.pen ? " (P)" : ""}${e.og ? " (EC)" : ""} ${e.min}`).join(", ")}
@@ -63,7 +68,7 @@ function Row({ m, idx, nowK, onWatch, onProde }: { m: Match; idx: Indexes; nowK:
   );
 }
 
-export function Agenda({ idx, nowK, today, onWatch, onProde, usage }: { idx: Indexes; nowK: string; today: string; onWatch: Watch; onProde?: (mk: string) => void; usage?: { served: number; since: number; today?: number; visits?: number } }) {
+export function Agenda({ idx, nowK, today, onWatch, onProde, usage, standings }: { idx: Indexes; nowK: string; today: string; onWatch: Watch; onProde?: (mk: string) => void; usage?: { served: number; since: number; today?: number; visits?: number }; standings?: StandingGroup[] }) {
   const [filter, setFilter] = useState("all");
   const live = liveMatches(idx, nowK);
   const next = nextMatch(nowK);
@@ -94,7 +99,7 @@ export function Agenda({ idx, nowK, today, onWatch, onProde, usage }: { idx: Ind
               <div key={m.d + m.t + m.a} className="tt-row">
                 <Live min={st.min} />
                 <span style={{ color: "#fff" }} className="tt-glow">
-                  {m.fa} {m.a} {st.hs != null ? `${st.hs}-${st.as}` : ""} {m.b} {m.fb}
+                  {m.fa} {m.a} {scoreStr(st) ?? ""} {m.b} {m.fb}
                 </span>
                 <button className="tt-btn ch" style={{ color: C.g }} onClick={() => onWatch(m, chOf(m)[0])}>VER</button>
               </div>
@@ -125,11 +130,19 @@ export function Agenda({ idx, nowK, today, onWatch, onProde, usage }: { idx: Ind
         </div>
       )}
 
-      {/* filtros */}
-      <div className="flex gap-3 flex-wrap mb-2" style={{ color: C.c }}>
+      {/* escenarios de clasificación de Paraguay */}
+      <Albirroja idx={idx} nowK={nowK} standings={standings} />
+
+      {/* filtros + exportar a calendario */}
+      <div className="flex gap-3 flex-wrap mb-2 items-baseline" style={{ color: C.c }}>
         {FILTERS.map(([k, label]) => (
           <button key={k} className={`tt-chip${filter === k ? " on" : ""}`} onClick={() => setFilter(k)}>{label}</button>
         ))}
+        <button
+          className="tt-chip" style={{ color: C.m, marginLeft: "auto" }}
+          title="Bajar los partidos de este filtro como eventos de calendario (.ics) con aviso 30 min antes"
+          onClick={() => downloadIcs(visible, `Mundial 2026 PY${filter === "all" ? "" : ` — ${FILTERS.find(([k]) => k === filter)?.[1]}`}`)}
+        >AGENDAR 📅</button>
       </div>
 
       {/* agenda por día */}

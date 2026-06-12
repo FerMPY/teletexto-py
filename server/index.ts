@@ -9,7 +9,7 @@
 //
 // OJO: el fetch saliente solo funciona en local y en deploys RECLAMADOS
 // (npx lakebed claim); en deploys anónimos /api/data degrada a vacío.
-import { capsule, endpoint, json, mutation, query, string, table } from "lakebed/server";
+import { capsule, endpoint, json, mutation, query, string, table, text } from "lakebed/server";
 import { MATCHES } from "../shared/matches";
 import { canon, clampGoals, kickoffEpoch, pk, prodePoints } from "../shared/mundial";
 import type { GoalRow, LeaderRow, ScoreRow, StandingGroup, VideoRow } from "../shared/mundial";
@@ -97,6 +97,7 @@ async function fifaScores(): Promise<ScoreRow[]> {
       out.push({
         teams: [home, away],
         hs: r.HomeTeamScore, as: r.AwayTeamScore,
+        hp: r.HomeTeamPenaltyScore ?? null, ap: r.AwayTeamPenaltyScore ?? null,
         status: r.MatchStatus, min: r.MatchTime || null,
         idMatch: r.IdMatch, idStage: r.IdStage,
       });
@@ -185,6 +186,43 @@ function buildLeaderboard(preds: any[], scores: ScoreRow[]): LeaderRow[] {
   return [...by.values()].sort((a, b) => b.pts - a.pts || b.exact - a.exact || a.name.localeCompare(b.name)).slice(0, 50);
 }
 
+/* ---------- PWA: manifest + service worker + ícono ----------
+   Lakebed no sirve estáticos arbitrarios, así que van como endpoints bajo
+   /api/ (mismo ruteo que /api/data). El SW se registra con scope "/" gracias
+   al header Service-Worker-Allowed. El cuerpo de endpoint es string → el
+   ícono es SVG (Chrome/Android lo aceptan; iOS cae al genérico). */
+const ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<rect width="512" height="512" rx="96" fill="#000"/>
+<text x="256" y="318" font-size="270" text-anchor="middle">📺</text>
+<rect x="96" y="400" width="80" height="30" fill="#ff4040"/>
+<rect x="176" y="400" width="80" height="30" fill="#3ddc3d"/>
+<rect x="256" y="400" width="80" height="30" fill="#ffd23d"/>
+<rect x="336" y="400" width="80" height="30" fill="#46e0e0"/>
+</svg>`;
+
+// Shell con caché (abre al instante y aguanta sin red o con la cuota agotada);
+// /api/* y las RPC de lakebed van SIEMPRE a la red. Navegación: red primero
+// (los deploys se ven frescos), caché de respaldo. Assets: caché primero con
+// refresco en segundo plano.
+const SW_JS = `
+const CACHE = "tt-shell-v1";
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("fetch", (e) => {
+  const u = new URL(e.request.url);
+  const asset = u.origin === self.location.origin && !u.pathname.startsWith("/api/") && /\\.(js|css|svg|png|woff2?)$/.test(u.pathname);
+  const nav = e.request.mode === "navigate";
+  if (e.request.method !== "GET" || (!nav && !asset)) return;
+  e.respondWith((async () => {
+    const c = await caches.open(CACHE);
+    const hit = await c.match(e.request);
+    const net = fetch(e.request).then((r) => { if (r && r.ok) c.put(e.request, r.clone()); return r; }).catch(() => null);
+    if (nav) return (await net) || hit || new Response("SIN RED", { status: 503 });
+    return hit || (await net) || new Response("", { status: 504 });
+  })());
+});
+`;
+
 export default capsule({
   name: "mundial-py",
 
@@ -251,5 +289,24 @@ export default capsule({
       try { leaderboard = buildLeaderboard(ctx.db.predictions.all(), scores); } catch { /* sin prode */ }
       return json({ videos: { gen, vs }, scores, standings: table_, goals: gls, leaderboard, usage: { served, since: bootAt, today, visits }, fetched: Math.floor(Date.now() / 1000) });
     }),
+
+    manifest: endpoint({ method: "GET", path: "/api/manifest.webmanifest" }, () =>
+      json({
+        name: "TELETEXTO PY — Mundial 2026",
+        short_name: "TELETEXTO PY",
+        description: "El Mundial 2026 con los canales paraguayos: agenda, marcadores en vivo, tabla, prode y visor.",
+        lang: "es-PY",
+        start_url: "/",
+        display: "standalone",
+        background_color: "#000000",
+        theme_color: "#000000",
+        icons: [{ src: "/api/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }],
+      }, { headers: { "Content-Type": "application/manifest+json", "Cache-Control": "max-age=3600" } })),
+
+    sw: endpoint({ method: "GET", path: "/api/sw.js" }, () =>
+      text(SW_JS, { headers: { "Content-Type": "text/javascript; charset=utf-8", "Service-Worker-Allowed": "/", "Cache-Control": "no-cache" } })),
+
+    icon: endpoint({ method: "GET", path: "/api/icon.svg" }, () =>
+      text(ICON_SVG, { headers: { "Content-Type": "image/svg+xml", "Cache-Control": "max-age=86400" } })),
   },
 });

@@ -27,7 +27,9 @@ function addMin(d: string, t: string, mins: number) {
   const [Y, Mo, D] = d.split("-").map(Number), [H, Mi] = t.split(":").map(Number);
   return new Date(Date.UTC(Y, Mo - 1, D, H, Mi + mins)).toISOString().slice(0, 16);
 }
-const LIVE_MIN = 125;
+// ventana "en vivo" por reloj cuando FIFA no responde: grupos ~110' reales;
+// eliminatorias pueden ir a prórroga + penales (~165') → margen más ancho
+const liveMin = (m: Match) => (m.f >= 4 ? 175 : 125);
 
 export const DOW = ["DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"];
 export const MES = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -54,12 +56,12 @@ export function buildIndexes(d: ApiData | null): Indexes {
 }
 
 // estado de un partido: marcador FIFA si hay, si no el reloj PY como respaldo
-export type MState = { live: boolean; final: boolean; hs: number | null; as: number | null; min: string | null };
+export type MState = { live: boolean; final: boolean; hs: number | null; as: number | null; hp: number | null; ap: number | null; min: string | null };
 export function matchState(m: Match, idx: Indexes, nowK: string): MState {
   const s = idx.score[mKey(m)];
   if (!s || s.hs == null) {
-    const live = tKey(m) <= nowK && nowK < addMin(m.d, m.t, LIVE_MIN);
-    return { live, final: addMin(m.d, m.t, LIVE_MIN) <= nowK, hs: null, as: null, min: null };
+    const live = tKey(m) <= nowK && nowK < addMin(m.d, m.t, liveMin(m));
+    return { live, final: addMin(m.d, m.t, liveMin(m)) <= nowK, hs: null, as: null, hp: null, ap: null, min: null };
   }
   // FIFA puede listar home/away al revés que nuestra grilla
   const sameOrder = canon(s.teams[0]) === canon(m.a);
@@ -67,9 +69,13 @@ export function matchState(m: Match, idx: Indexes, nowK: string): MState {
   return {
     live, final: !live && s.status !== 1,
     hs: sameOrder ? s.hs : s.as, as: sameOrder ? s.as : s.hs,
+    hp: sameOrder ? (s.hp ?? null) : (s.ap ?? null), ap: sameOrder ? (s.ap ?? null) : (s.hp ?? null),
     min: s.min,
   };
 }
+// "2-1" / "1-1 (4-2 PEN)" — un solo formato para agenda, visor y título de pestaña
+export const scoreStr = (st: MState) =>
+  st.hs == null ? null : `${st.hs}-${st.as}${st.hp != null ? ` (${st.hp}-${st.ap} PEN)` : ""}`;
 // los goles también vienen en orden FIFA → reordenar el lado si hace falta
 export function goalsFor(m: Match, idx: Indexes): GoalEvent[] {
   const ev = idx.goals[mKey(m)] || [];

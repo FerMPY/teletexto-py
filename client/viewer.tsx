@@ -7,7 +7,7 @@ import { useEffect, useState } from "preact/hooks";
 import { CHANNELS, CH_ORDER } from "../shared/mundial";
 import type { ChannelKey, Match } from "../shared/mundial";
 import { C, Live } from "./teletext";
-import { chOf, matchState, mKey } from "./state";
+import { chOf, matchState, mKey, scoreStr } from "./state";
 import type { Indexes } from "./state";
 
 const EMBEDS: Record<ChannelKey, { type: "iframe" | "yt"; src?: string; channel?: string; note: string; matchOnly?: boolean }> = {
@@ -123,7 +123,7 @@ export function Viewer({ match, ch, idx, nowK, onSwitch, onClose }: {
           <span style={{ color: C.dim }}>P500</span>
           {match && st ? (
             <span style={{ color: C.y }} className="tt-glow">
-              {match.fa} {match.a} {st.hs != null ? `${st.hs}-${st.as}` : "vs"} {match.b} {match.fb}
+              {match.fa} {match.a} {scoreStr(st) ?? "vs"} {match.b} {match.fb}
             </span>
           ) : (
             <span style={{ color: C.y }}>SEÑAL {CHANNELS[ch].name}</span>

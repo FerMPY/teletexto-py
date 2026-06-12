@@ -11,7 +11,7 @@ import { Prode } from "./prode";
 import { C, TT_CSS } from "./teletext";
 import { Tabla } from "./tabla";
 import { Viewer } from "./viewer";
-import { buildIndexes, chOf, liveMatches, mKey, useApiData, useClock, useGoalToasts } from "./state";
+import { buildIndexes, chOf, liveMatches, matchState, mKey, scoreStr, useApiData, useClock, useGoalToasts } from "./state";
 
 type Page = 100 | 200 | 300;
 const PAGES: { p: Page; label: string; cls: string }[] = [
@@ -44,16 +44,38 @@ function parseHash(): Nav {
 }
 
 export function App() {
-  // título de pestaña + favicon (el scaffold de lakebed deja el nombre crudo del capsule)
+  // favicon (el scaffold de lakebed deja el nombre crudo del capsule) + PWA:
+  // manifest y service worker (cachea el shell — abre al instante y aguanta
+  // sin red o con la cuota agotada; /api siempre va a la red)
   useEffect(() => {
-    document.title = "MUNDIAL 2026 PY · TELETEXTO";
     const link = document.querySelector("link[rel='icon']") ?? document.head.appendChild(Object.assign(document.createElement("link"), { rel: "icon" }));
     link.setAttribute("href", "data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>"));
+    const head = (tag: string, attrs: Record<string, string>) =>
+      document.head.appendChild(Object.assign(document.createElement(tag), attrs));
+    head("link", { rel: "manifest", href: "api/manifest.webmanifest" });
+    head("meta", { name: "theme-color", content: "#000000" });
+    head("meta", { name: "apple-mobile-web-app-capable", content: "yes" });
+    head("meta", { name: "apple-mobile-web-app-status-bar-style", content: "black" });
+    // solo en producción: en local el caché del SW te sirve JS viejo entre ediciones
+    if (location.hostname.endsWith("lakebed.app")) {
+      navigator.serviceWorker?.register("/api/sw.js", { scope: "/" }).catch(() => { /* sin SW se vive igual */ });
+    }
   }, []);
   const { data, stale } = useApiData();
   const now = useClock();
   const idx = buildIndexes(data);
   const { toasts, dismiss } = useGoalToasts(idx, now.key);
+
+  // marcador en el título de la pestaña: el resultado se ve aunque estés en
+  // otra ventana (prioridad: el partido de Paraguay)
+  useEffect(() => {
+    const live = liveMatches(idx, now.key);
+    const m = live.find((x) => x.py) || live[0];
+    const st = m ? matchState(m, idx, now.key) : null;
+    document.title = m && st && st.hs != null
+      ? `⚽ ${m.fa} ${scoreStr(st)} ${m.fb} · TELETEXTO PY`
+      : "MUNDIAL 2026 PY · TELETEXTO";
+  }, [idx, now.key]);
 
   // estado de navegación inicial desde el hash (deep links del teletexto)
   const [init] = useState(parseHash);
@@ -158,7 +180,7 @@ export function App() {
         )}
 
         {/* página activa */}
-        {page === 100 && <Agenda idx={idx} nowK={now.key} today={now.date} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} usage={data?.usage} />}
+        {page === 100 && <Agenda idx={idx} nowK={now.key} today={now.date} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} usage={data?.usage} standings={data?.standings} />}
         {page === 200 && <Tabla data={data} />}
         {page === 300 && <Prode data={data} idx={idx} nowK={now.key} nowMs={Date.now()} target={prodeTarget} />}
 

@@ -17,7 +17,12 @@ el auth integrados de Lakebed (invitado local, Google en producción).
 - **P100 AGENDA** — partidos por día, filtros, marcador y minuto en vivo,
   goleadores. Cada partido muestra **los 5 canales**: en color los que figuran
   en la grilla, apagados el resto (la grilla a veces falla — probalos igual).
-- **P200 TABLA** — los 12 grupos, actualizada con cada partido.
+  Botón **📅** por partido y **AGENDAR** por filtro: bajan un `.ics` con los
+  canales, el deep link al visor y aviso 30 min antes. El box **QUE NECESITA
+  LA ALBIRROJA** aparece solo cuando los escenarios (gana/empata/pierde)
+  separan algo de verdad — enumera todos los resultados posibles del grupo.
+- **P200 TABLA** — los 12 grupos, la pelea de los **mejores terceros**
+  (clasifican 8) y los **goleadores** del torneo.
 - **P300 PRODE** — pronosticá antes del pitazo inicial. Exacto +3, ganador +1.
 - **P500 VISOR** — el partido embebido: GEN/VS abren el video del partido en
   YouTube cuando lo capturamos; Trece/Unicanal embeben su página en vivo; Popu
@@ -35,6 +40,14 @@ el auth integrados de Lakebed (invitado local, Google en producción).
 | `#500-gen-estados-unidos-paraguay` | Ese partido en ese canal |
 
 Atrás del navegador cierra el visor (una sola entrada de historial).
+
+## PWA
+
+Instalable desde Chrome/Android ("Agregar a la pantalla de inicio"). Manifest,
+ícono y service worker se sirven como endpoints bajo `/api/` (Lakebed no sirve
+estáticos sueltos). El SW cachea el shell — abre al instante y aguanta sin red
+o con la cuota diaria agotada; `/api` va siempre a la red. Con un partido en
+vivo, el marcador se ve en el título de la pestaña.
 
 ## Correr local
 

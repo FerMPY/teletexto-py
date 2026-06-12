@@ -15,6 +15,7 @@ export type Match = {
 export type ScoreRow = {
   teams: [string, string];
   hs: number | null; as: number | null;
+  hp: number | null; ap: number | null; // penales (solo eliminatorias)
   status: number;     // 1 = por jugarse, 3 = en vivo, otros = jugado
   min: string | null;
   idMatch: string; idStage: string;
@@ -77,6 +78,8 @@ export function kickoffEpoch(m: Match): number {
 }
 
 // Puntaje del prode: 3 por resultado exacto, 1 por acertar ganador/empate.
+// En eliminatorias vale el marcador al final del juego (prórroga incluida,
+// penales NO): hs/as de FIFA ya vienen así; hp/ap van aparte.
 export function prodePoints(p: { hs: number; as: number }, real: { hs: number; as: number }): number {
   if (p.hs === real.hs && p.as === real.as) return 3;
   const sg = (x: { hs: number; as: number }) => Math.sign(x.hs - x.as);
