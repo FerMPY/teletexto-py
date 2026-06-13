@@ -64,6 +64,11 @@ export function App() {
     // solo en producción: en local el caché del SW te sirve JS viejo entre ediciones
     if (location.hostname.endsWith("lakebed.app")) {
       navigator.serviceWorker?.register("/api/sw.js", { scope: "/" }).catch(() => { /* sin SW se vive igual */ });
+      // métricas de visitas (GoatCounter, sin cookies, fuera de Lakebed → no
+      // gasta cuota). Solo en prod para no ensuciar el panel con dev/local.
+      const gc = Object.assign(document.createElement("script"), { async: true, src: "//gc.zgo.at/count.js" });
+      gc.setAttribute("data-goatcounter", "https://teletexto.goatcounter.com/count");
+      document.head.appendChild(gc);
     }
   }, []);
   // datos por query REACTIVA (no más polling de endpoint): Lakebed empuja el

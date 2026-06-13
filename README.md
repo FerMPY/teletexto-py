@@ -49,6 +49,12 @@ estáticos sueltos). El SW cachea el shell — abre al instante y aguanta sin re
 o con la cuota diaria agotada; `/api` va siempre a la red. Con un partido en
 vivo, el marcador se ve en el título de la pestaña.
 
+## Métricas
+
+Visitas por [GoatCounter](https://www.goatcounter.com/) (sin cookies, sin datos
+personales, fuera de Lakebed → no toca la cuota). El script se inyecta solo en
+producción (`*.lakebed.app`); en local no cuenta nada.
+
 ## Correr local
 
 ```sh
