@@ -24,14 +24,13 @@ el auth integrados de Lakebed (invitado local, Google en producción).
 - **P200 TABLA** — los 12 grupos, la pelea de los **mejores terceros**
   (clasifican 8) y los **goleadores** del torneo.
 - **P300 PRODE** — pronosticá antes del pitazo inicial. Exacto +3, ganador +1.
-- **P500 VISOR** — el partido en la misma página. **GEN, Popu y VS Sports** van
-  por el **portal en vivo de GEN** (`gen.com.py/live/`) — el único reproductor
-  incrustable, y es la señal que transmite el partido (el propio sitio de VS lo
-  pasa así). El **video por partido de VS/GEN en YouTube tiene la incrustación
-  deshabilitada** por el dueño (da "video unavailable" en cualquier iframe), así
-  que va como botón verde **▶ VER ESTE PARTIDO EN YOUTUBE ↗** (abre y reproduce
-  en YouTube). **Trece/Unicanal** embeben su página en vivo. Aviso CARGANDO
-  mientras el portal tarda, y **COPIAR LINK** para compartir.
+- **P500 VISOR** — el partido en la misma página. **Trece, Unicanal y Popu TV**
+  se embeben (Trece/Unicanal por su `/en-vivo`, Popu por el portal en vivo de
+  GEN). **GEN y VS Sports NO se pueden incrustar** (el video por partido de VS
+  en YouTube tiene la incrustación deshabilitada por el dueño, y el reproductor
+  real de GEN está bloqueado por CSP a dominios Nación Media), así que muestran
+  una **tarjeta de links**: ▶ **EN YOUTUBE (mejor calidad)** y **ABRIR el canal
+  en su sitio**. **COPIAR LINK** comparte lo que estás viendo.
 
 ## Deep links (el hash es el número de página)
 

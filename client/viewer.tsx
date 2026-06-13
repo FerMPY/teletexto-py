@@ -2,16 +2,17 @@
 // (los de la grilla primero).
 //
 // REALIDAD DE LAS SEÑALES (verificado 2026-06-13, partido Brasil-Marruecos):
-//  - VS Sports SUBE cada partido a YouTube pero con la INCRUSTACIÓN DESHABILITADA
-//    por el dueño → en un iframe da "This video is unavailable" (probado: 4/4 de
-//    sus videos del Mundial dan ERROR en contexto embed, aunque abren bien en
-//    youtube.com). NINGÚN parámetro lo evita. GEN apunta a esos MISMOS videos en
-//    su home → se rompe igual. Por eso el video por partido va como LINK, nunca embed.
-//  - El ÚNICO reproductor incrustable es el PORTAL EN VIVO de GEN
-//    (gen.com.py/live/): 200, sin X-Frame-Options, reproductor real con selector
-//    de canal. Es lo que usa el propio sitio de VS Sports ("GEN 1") para pasar el
-//    partido. GEN, Popu y VS (todos Nación Media) van por ahí para verlo EN LA APP.
-//  - Trece y Unicanal: su propia página /en-vivo embebida.
+//  - El video por partido de VS Sports en YouTube tiene la INCRUSTACIÓN
+//    DESHABILITADA por el dueño (4/4 dan ERROR en iframe, aunque abren bien en
+//    youtube.com). GEN apunta a esos mismos videos.
+//  - El reproductor real de GEN (no.gendigi.net / gentv.desdepylabs.com) tiene
+//    CSP frame-ancestors limitado a dominios Nación Media + chequeo de Referer:
+//    NO se puede incrustar desde teletexto.lakebed.app NI anidado dentro del
+//    home de GEN (Firefox/Zen corta toda la cadena → "no.gendigi.net will not
+//    allow ... if another site has embedded it").
+//  → Conclusión: GEN/VS/Popu NO se pueden incrustar. Van como LINKS a la
+//    transmisión oficial (la mejor calidad es YouTube). Solo Trece y Unicanal
+//    se embeben (su /en-vivo no bloquea el framing).
 import { useEffect, useState } from "preact/hooks";
 import { CHANNELS, CH_ORDER } from "../shared/mundial";
 import type { ChannelKey, Match } from "../shared/mundial";
@@ -19,13 +20,15 @@ import { C, Live } from "./teletext";
 import { chOf, matchState, mKey, scoreStr } from "./state";
 import type { Indexes } from "./state";
 
-const GEN_LIVE = "https://www.gen.com.py/live/";
-const EMBEDS: Record<ChannelKey, { src: string; note: string }> = {
-  gen:   { src: GEN_LIVE,                          note: "GEN transmite el partido en su portal en vivo. Tocá ▶ adentro para arrancar." },
+const VS_YT = "https://www.youtube.com/@somosvssports/streams";   // canal de VS en YouTube (siempre anda)
+
+// src = se embebe; sin src = solo links (su señal no se deja incrustar)
+const EMBEDS: Record<ChannelKey, { src?: string; note: string }> = {
+  gen:   { note: "GEN no deja incrustar su señal. La mejor calidad del partido está en YouTube." },
   trece: { src: "https://trece.com.py/en-vivo/",    note: "Reproductor oficial de Trece. Tocá ▶ adentro si no arranca solo." },
   uni:   { src: "https://unicanal.com.py/en-vivo/", note: "Señal en vivo oficial de Unicanal. Tocá ▶ adentro para arrancar." },
-  popu:  { src: GEN_LIVE,                           note: "Popu TV va por el portal en vivo de GEN (mismo grupo). Tocá ▶ adentro si no arranca." },
-  vs:    { src: GEN_LIVE,                           note: "VS Sports transmite por la señal de GEN (mismo grupo, su sitio también lo pasa así). Su video del partido en YouTube no se puede incrustar — abrilo con el botón verde." },
+  popu:  { src: "https://www.gen.com.py/live/", note: "Popu TV va por el portal en vivo de GEN (mismo grupo). Tocá ▶ adentro si no arranca." },
+  vs:    { note: "VS Sports transmite por la señal de GEN. Su video del partido va por YouTube (mejor calidad)." },
 };
 
 // el hash ya identifica partido+canal → la URL del momento ES el deep link
@@ -74,12 +77,16 @@ export function Viewer({ match, ch, idx, nowK, onSwitch, onClose }: {
   const e = EMBEDS[ch];
   const st = match ? matchState(match, idx, nowK) : null;
 
-  // video del partido en YouTube (VS/GEN): NO se incrusta (el dueño lo bloqueó),
-  // pero SÍ reproduce en youtube.com → lo ofrecemos como link directo al partido
-  const rawVideo = match && (ch === "gen" || ch === "vs") ? idx.video[mKey(match)]?.[ch] : undefined;
-  const ytWatch = rawVideo && rawVideo.includes("youtube.com/embed/")
+  // Link a YouTube (mejor calidad). El scrape del video por partido a veces
+  // vuelve vacío desde el datacenter de Lakebed → si lo tenemos, va DIRECTO al
+  // partido; si no, al canal de VS Sports (ahí está el vivo igual).
+  const vid = match ? idx.video[mKey(match)] : undefined;
+  const rawVideo = vid && (vid.vs || vid.gen);
+  const ytMatch = rawVideo && rawVideo.includes("youtube.com/embed/")
     ? rawVideo.replace("/embed/", "/watch?v=")
     : undefined;
+  const ytHref = ytMatch || VS_YT;
+  const ytLabel = ytMatch ? "▶ ESTE PARTIDO EN YOUTUBE — MEJOR CALIDAD ↗" : "▶ VER EN YOUTUBE (VS SPORTS) ↗";
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: "#000" }}>
@@ -116,37 +123,46 @@ export function Viewer({ match, ch, idx, nowK, onSwitch, onClose }: {
           )}
         </div>
 
-        {/* pantalla: el portal en vivo del canal (lo único incrustable) */}
+        {/* pantalla: Trece/Unicanal se embeben; GEN/VS/Popu son una tarjeta de
+            links (su señal no se deja incrustar) */}
         <div className="tt-screen">
-          <iframe
-            src={e.src} onLoad={onLoad}
-            allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowFullScreen
-            referrerpolicy="no-referrer-when-downgrade"
-          />
-          {loading && (
-            <div className="tt-load">
-              <span className="tt-blink" style={{ color: C.c }}>● CARGANDO SEÑAL {CHANNELS[ch].name} ●</span>
-              <span style={{ color: C.dim, fontSize: ".75em" }}>LA PAGINA DEL CANAL PUEDE TARDAR SI HAY MUCHA GENTE MIRANDO</span>
+          {e.src ? (
+            <>
+              <iframe
+                src={e.src} onLoad={onLoad}
+                allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowFullScreen
+                referrerpolicy="no-referrer-when-downgrade"
+              />
+              {loading && (
+                <div className="tt-load">
+                  <span className="tt-blink" style={{ color: C.c }}>● CARGANDO SEÑAL {CHANNELS[ch].name} ●</span>
+                  <span style={{ color: C.dim, fontSize: ".75em" }}>LA PAGINA DEL CANAL PUEDE TARDAR SI HAY MUCHA GENTE MIRANDO</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-4 text-center px-6">
+              <div className="tt-blink" style={{ color: C.c, fontSize: "1.5em" }}>● SEÑAL {CHANNELS[ch].name} ●</div>
+              <div style={{ color: C.y }} className="max-w-xl">
+                {st?.live ? "EL PARTIDO ESTÁ EN VIVO." : "ELEGÍ POR DÓNDE VERLO."} {CHANNELS[ch].name} no deja
+                incrustar su señal acá — abrila en la transmisión oficial (la mejor calidad es YouTube):
+              </div>
+              <div className="flex flex-col gap-2 w-full" style={{ maxWidth: "30em" }}>
+                <a className="tt-btn tt-glow" style={{ background: C.g, color: "#000", fontSize: "1.15em", padding: ".45em" }} href={ytHref} target="_blank" rel="noopener">{ytLabel}</a>
+                <a className="tt-btn" style={{ color: C.c, fontSize: "1.05em", padding: ".4em" }} href={CHANNELS[ch].url} target="_blank" rel="noopener">ABRIR {CHANNELS[ch].name} EN SU SITIO ↗</a>
+              </div>
             </div>
           )}
         </div>
 
-        {/* video directo del partido (YouTube) cuando lo capturamos: NO se puede
-            incrustar pero abre y reproduce en YouTube */}
-        {ytWatch && (
-          <a
-            href={ytWatch} target="_blank" rel="noopener"
-            className="tt-btn tt-glow block text-center mt-1"
-            style={{ color: "#000", background: C.g, fontSize: "1.05em", padding: ".35em" }}
-          >▶ VER ESTE PARTIDO EN YOUTUBE ↗</a>
-        )}
-
-        {/* nota */}
-        <div className="tt-row mt-1" style={{ fontSize: ".85em" }}>
+        {/* nota + (para los que se embeben) accesos extra */}
+        <div className="tt-row mt-1 flex-wrap items-center gap-2" style={{ fontSize: ".85em" }}>
           <span style={{ color: C.dim }} className="normal-case">{e.note}</span>
-          <a href={CHANNELS[ch].url} target="_blank" rel="noopener" style={{ color: C.c }}>
-            ABRIR EN EL SITIO DE {CHANNELS[ch].name} ↗
-          </a>
+          {e.src && (
+            <a href={CHANNELS[ch].url} target="_blank" rel="noopener" style={{ color: C.c }}>
+              ABRIR EN EL SITIO DE {CHANNELS[ch].name} ↗
+            </a>
+          )}
         </div>
       </div>
     </div>
