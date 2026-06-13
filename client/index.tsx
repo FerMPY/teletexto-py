@@ -2,16 +2,17 @@
 // los canales paraguayos, marcadores FIFA en vivo, tabla, prode y visor en la
 // misma página. Páginas: P100 AGENDA · P200 TABLA · P300 PRODE · P500 VISOR.
 // Podés tipear el número de página, como en el control remoto de antes.
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useMutation, useQuery } from "lakebed/client";
 import { CH_ORDER, pk } from "../shared/mundial";
-import type { ChannelKey, Match } from "../shared/mundial";
+import type { ApiData, ChannelKey, Match } from "../shared/mundial";
 import { MATCHES } from "../shared/matches";
 import { Agenda } from "./agenda";
 import { Prode } from "./prode";
 import { C, TT_CSS } from "./teletext";
 import { Tabla } from "./tabla";
 import { Viewer } from "./viewer";
-import { buildIndexes, chOf, liveMatches, matchState, mKey, scoreStr, useApiData, useClock, useGoalToasts } from "./state";
+import { buildIndexes, chOf, liveMatches, matchState, mKey, scoreStr, useClock, useGoalToasts } from "./state";
 
 type Page = 100 | 200 | 300;
 const PAGES: { p: Page; label: string; cls: string }[] = [
@@ -50,6 +51,10 @@ export function App() {
   useEffect(() => {
     const link = document.querySelector("link[rel='icon']") ?? document.head.appendChild(Object.assign(document.createElement("link"), { rel: "icon" }));
     link.setAttribute("href", "data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>"));
+    // viewport-fit=cover habilita env(safe-area-inset-*): sin esto, en iPhone
+    // la barra fastext queda pegada al indicador de inicio (sin aire abajo)
+    const vp = document.querySelector("meta[name=viewport]");
+    if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
     const head = (tag: string, attrs: Record<string, string>) =>
       document.head.appendChild(Object.assign(document.createElement(tag), attrs));
     head("link", { rel: "manifest", href: "api/manifest.webmanifest" });
@@ -61,10 +66,50 @@ export function App() {
       navigator.serviceWorker?.register("/api/sw.js", { scope: "/" }).catch(() => { /* sin SW se vive igual */ });
     }
   }, []);
-  const { data, stale } = useApiData();
+  // datos por query REACTIVA (no más polling de endpoint): Lakebed empuja el
+  // caché por WebSocket cuando `refresh` lo reescribe. Leer cuesta "requests"
+  // (10k/día), no "mutations" (1k/día) — y un solo write llega a todos.
+  const cacheRows = useQuery<{ id: string; k: string; blob: string; at: string }[]>("data");
+  const triggerRefresh = useMutation<[], void>("refresh");
+  const cacheRow = Array.isArray(cacheRows) ? cacheRows[0] : undefined;
+  const data = useMemo<ApiData | null>(() => {
+    try { return cacheRow?.blob ? JSON.parse(cacheRow.blob) as ApiData : null; } catch { return null; }
+  }, [cacheRow?.blob]);
+  const atMs = Number(cacheRow?.at || 0);
   const now = useClock();
   const idx = buildIndexes(data);
   const { toasts, dismiss } = useGoalToasts(idx, now.key);
+  // datos congelados: el último fetch real quedó viejo (cuota agotada o fuente
+  // caída). La agenda/los canales siguen; los marcadores vuelven solos.
+  const stale = atMs > 0 && Date.now() - atMs > 5 * 60_000;
+
+  // disparador del refresh: lo llaman los clientes, pero `refresh` se autolimita
+  // (REFRESH_MS) y la query reactiva propaga el resultado, así que en la práctica
+  // las fuentes se piden ~1 vez por ventana entre TODOS. 25s en vivo, 90s si no.
+  // Pausa con la pestaña oculta. Jitter inicial para no llamar todos a la vez.
+  const atRef = useRef(0); atRef.current = atMs;
+  const idxRef = useRef(idx); idxRef.current = idx;
+  const nowKRef = useRef(now.key); nowKRef.current = now.key;
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      if (!alive || document.hidden) return;
+      const live = liveMatches(idxRef.current, nowKRef.current).length > 0;
+      // en vivo refresca ~30s; sin partidos, cada 5 min (los datos casi no
+      // cambian). Como `at` se propaga reactivo, el primero que lo ve viejo
+      // dispara el refresh y su write calla a los demás → ~1 write por ventana
+      // entre TODOS, no por cliente. Cabe en la cuota de 1k mutations/día.
+      const threshold = live ? 30_000 : 300_000;
+      if (atRef.current === 0 || Date.now() - atRef.current > threshold) {
+        void triggerRefresh().catch(() => { /* sin red → reintenta al próximo tick */ });
+      }
+    };
+    const start = setTimeout(tick, 200 + Math.floor(Math.random() * 6000)); // jitter anti-manada
+    const id = setInterval(tick, 15_000);
+    const onVis = () => { if (!document.hidden) tick(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { alive = false; clearTimeout(start); clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
+  }, []);
 
   // marcador en el título de la pestaña: el resultado se ve aunque estés en
   // otra ventana (prioridad: el partido de Paraguay)
@@ -151,7 +196,7 @@ export function App() {
   return (
     <div className="tt tt-crt">
       <style>{TT_CSS}</style>
-      <div className="mx-auto max-w-6xl px-2 pb-24 pt-1">
+      <div className="mx-auto max-w-6xl px-2 pt-1" style={{ paddingBottom: "calc(6rem + env(safe-area-inset-bottom))" }}>
 
         {/* cabecera de teletexto: página · servicio · fecha · reloj */}
         <div className="flex justify-between gap-2 flex-wrap" style={{ color: C.fg }}>
@@ -180,12 +225,12 @@ export function App() {
         )}
 
         {/* página activa */}
-        {page === 100 && <Agenda idx={idx} nowK={now.key} today={now.date} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} usage={data?.usage} standings={data?.standings} />}
+        {page === 100 && <Agenda idx={idx} nowK={now.key} today={now.date} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} standings={data?.standings} />}
         {page === 200 && <Tabla data={data} />}
         {page === 300 && <Prode data={data} idx={idx} nowK={now.key} nowMs={Date.now()} target={prodeTarget} />}
 
         {/* fastext: los botones de colores del control */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-6xl px-2 pb-2">
+        <div className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-6xl px-2" style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))", paddingTop: "0.25rem", background: "#000" }}>
           <div className="tt-fast">
             {PAGES.map(({ p, label, cls }) => (
               <button key={p} className={`tt-btn ${cls}${page === p && !watch ? " on" : ""}`} onClick={() => setPage(p)}>

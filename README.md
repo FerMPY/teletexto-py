@@ -66,7 +66,12 @@ npx lakebed deploy       # está deshabilitado en deploys anónimos
 
 - `shared/mundial.ts` — tipos, canales, normalización de nombres, reglas del prode.
 - `shared/matches.ts` — la agenda (se edita acá para octavos; redeploy para publicar).
-- `server/index.ts` — `/api/data` (FIFA + GEN + VS, con caché) + schema/queries/mutations del prode.
+- `server/index.ts` — datos en vivo (FIFA + GEN + VS) por la **query reactiva
+  `data`** + la **mutación `refresh`** (un solo fetch/escritura por ventana se
+  propaga por WebSocket a todos los que miran), schema/queries/mutations del
+  prode, y los endpoints de la PWA. Los datos NO van por endpoint a propósito:
+  cada hit a un endpoint cuenta como *mutation* (cuota chica, 1k/día) y se
+  agotaba; las queries cuentan como *requests* (10k/día) y escalan con la gente.
 - `client/` — Preact: teletexto (CSS propio), agenda, tabla, prode, visor.
 
 ## Créditos

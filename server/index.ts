@@ -15,8 +15,10 @@ import { canon, clampGoals, kickoffEpoch, pk, prodePoints } from "../shared/mund
 import type { GoalRow, LeaderRow, ScoreRow, StandingGroup, VideoRow } from "../shared/mundial";
 
 const UA = "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36";
-let served = 0; const bootAt = Date.now(); // medidor casero de uso (por instancia)
-let pendingVisits = 0; // visitas sin persistir todavía
+// mínimo entre fetches reales a las fuentes (y reescrituras del caché). Es el
+// techo del gasto de "mutations": 25s ≈ 144 writes/hora EN VIVO como máximo,
+// sin importar cuántos miran (la query reactiva calla a los clientes de más).
+const REFRESH_MS = 25_000;
 
 // "México vs. Sudáfrica" / "Estados Unidos Vs. Paraguay - FIFA..." → ["méxico","sudáfrica"]
 function teamsFromTitle(t: string): [string, string] | null {
@@ -234,12 +236,20 @@ export default capsule({
       hs: string(),         // goles pronosticados del equipo "a" (la db no tiene number())
       as: string(),         // goles pronosticados del equipo "b"
     }),
-    // contador diario de pedidos a /api/data (no hay dashboard de Lakebed aún):
-    // se persiste de a tandas de 25 para no gastar cuota de escrituras
+    // contador diario (sin uso hoy; las métricas se rehacen aparte)
     stats: table({
       day: string(),        // "YYYY-MM-DD" (UTC)
-      count: string(),      // pedidos a /api/data
-      visits: string(),     // visitas (1er pedido de cada sesión, ?v=1)
+      count: string(),      // pedidos
+      visits: string(),     // visitas
+    }),
+    // caché de los datos (videos+marcadores+tabla+goleadores+prode) en UNA fila.
+    // La escribe `refresh` (mutación, con fetch saliente); la leen todos por la
+    // query reactiva `data` — un solo write se propaga a todos los que miran,
+    // sin que cada cliente pague un pedido a un endpoint (que cuenta como mutación).
+    cache: table({
+      k: string(),          // siempre "data" (fila única)
+      blob: string(),       // JSON del payload completo
+      at: string(),         // epoch ms del último fetch real
     }),
   },
 
@@ -247,6 +257,10 @@ export default capsule({
     myPredictions: query((ctx) =>
       ctx.db.predictions.where("userId", ctx.auth.userId).all()
     ),
+    // lectura reactiva del caché: Lakebed empuja el cambio a todos los clientes
+    // suscritos por WebSocket cuando `refresh` reescribe la fila (cuota de
+    // "requests", 10k/día — NO de "mutations", 1k/día)
+    data: query((ctx) => ctx.db.cache.where("k", "data").all()),
   },
 
   mutations: {
@@ -261,35 +275,34 @@ export default capsule({
       if (prev) ctx.db.predictions.update(prev.id, { hs: String(H), as: String(A), displayName: name });
       else ctx.db.predictions.insert({ userId: ctx.auth.userId, displayName: name, matchKey, hs: String(H), as: String(A) });
     }),
-  },
 
-  endpoints: {
-    // Mismo contrato que el /api/data del server.mjs original, más el prode.
-    // "usage" es un medidor casero de la cuota de Lakebed (10k req/día): cuenta
-    // en memoria los hits de esta instancia (se reinicia en cada deploy/arranque).
-    data: endpoint({ method: "GET", path: "/api/data" }, async (ctx, req) => {
-      served++;
-      if (req.query.get("v") === "1") pendingVisits++;
-      let today = 0, visits = 0;
-      try {
-        const day = new Date().toISOString().slice(0, 10);
-        const row = ctx.db.stats.where("day", day).all()[0] as any;
-        today = Number(row?.count || 0) + (served % 25);
-        visits = Number(row?.visits || 0) + pendingVisits;
-        if (served % 25 === 0 || pendingVisits > 0) { // tandas: no gastar escrituras
-          const add = served % 25 === 0 ? 25 : 0;
-          if (row) ctx.db.stats.update(row.id, { count: String(Number(row.count) + add), visits: String(Number(row.visits || 0) + pendingVisits) });
-          else ctx.db.stats.insert({ day, count: String(add), visits: String(pendingVisits) });
-          pendingVisits = 0;
-        }
-      } catch { /* sin stats no pasa nada */ }
+    // Refresca el caché desde las fuentes (FIFA/GEN/YT) y reescribe la única
+    // fila de `cache`. La disparan los clientes, pero se AUTOLIMITA: si el último
+    // fetch real fue hace < REFRESH_MS, no toca nada. Así, no importa cuántos la
+    // llamen, las fuentes se piden ~1 vez por ventana y la tabla `cache` se
+    // reescribe ~1 vez por ventana — un solo write se propaga por la query
+    // reactiva a TODOS los que miran. Acá está el gasto de "mutations" del día,
+    // acotado (~1/min en vivo) en vez de 1 por cada poll de cada pestaña.
+    refresh: mutation(async (ctx) => {
+      const cur = ctx.db.cache.where("k", "data").all()[0] as any;
+      if (cur && Date.now() - Number(cur.at || 0) < REFRESH_MS) return; // ya fresco
       const [gen, vs, scores] = await Promise.all([genVideos(), vsVideos(), fifaScores()]);
       const [table_, gls] = await Promise.all([standings(), goals(scores)]); // dependen de scores
       let leaderboard: LeaderRow[] = [];
       try { leaderboard = buildLeaderboard(ctx.db.predictions.all(), scores); } catch { /* sin prode */ }
-      return json({ videos: { gen, vs }, scores, standings: table_, goals: gls, leaderboard, usage: { served, since: bootAt, today, visits }, fetched: Math.floor(Date.now() / 1000) });
+      const blob = JSON.stringify({ videos: { gen, vs }, scores, standings: table_, goals: gls, leaderboard, fetched: Math.floor(Date.now() / 1000) });
+      // releer por si otra llamada concurrente ya insertó la fila
+      const row = ctx.db.cache.where("k", "data").all()[0] as any;
+      if (row) ctx.db.cache.update(row.id, { blob, at: String(Date.now()) });
+      else ctx.db.cache.insert({ k: "data", blob, at: String(Date.now()) });
     }),
+  },
 
+  endpoints: {
+    // PWA solamente. Los DATOS ya NO van por endpoint (cada hit a un endpoint
+    // cuenta como "mutation" y reventaba la cuota de 1k/día): van por la query
+    // reactiva `data` + la mutación `refresh`. Estos tres se cachean en el SW,
+    // así que un visitante los pide una vez y listo.
     manifest: endpoint({ method: "GET", path: "/api/manifest.webmanifest" }, () =>
       json({
         name: "TELETEXTO PY — Mundial 2026",

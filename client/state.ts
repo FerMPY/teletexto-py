@@ -85,43 +85,8 @@ export function goalsFor(m: Match, idx: Indexes): GoalEvent[] {
 }
 
 /* ---------- hooks ---------- */
-// Poll "amable" con la cuota de Lakebed (10k requests/día): 30s solo cuando
-// hay partido en vivo, 90s el resto, y NADA con la pestaña oculta (se reanuda
-// al volver). Una pestaña abierta todo el día pasa de ~2.880 a <1.000 pedidos.
-export function useApiData(): ApiData | null {
-  const [data, setData] = useState<ApiData | null>(null);
-  // datos congelados: varios polls seguidos sin respuesta (cuota diaria de
-  // Lakebed agotada, o se cayó la fuente). La agenda/los canales siguen.
-  const [stale, setStale] = useState(false);
-  useEffect(() => {
-    let alive = true, timer: ReturnType<typeof setTimeout> | undefined;
-    let first = true; // el 1er pedido de la visita lleva ?v=1 → contador de visitas
-    let lastOk = Date.now();
-    const tick = async () => {
-      if (!alive || document.hidden) return; // oculta → pausa; visibilitychange reanuda
-      let delay = 90_000;
-      let ok = false;
-      try {
-        const r = await fetch(first ? "api/data?v=1" : "api/data");
-        first = false;
-        if (r.ok) {
-          const j: ApiData = await r.json();
-          ok = true;
-          if (alive) { setData(j); setStale(false); }
-          if ((j.scores || []).some((s) => s.status === 3)) delay = 30_000;
-        }
-      } catch { /* sin red → la agenda sigue sin marcadores */ }
-      if (ok) lastOk = Date.now();
-      else if (alive && Date.now() - lastOk > 4 * 60_000) setStale(true);
-      timer = setTimeout(tick, delay);
-    };
-    const onVis = () => { if (!document.hidden) { clearTimeout(timer); void tick(); } };
-    document.addEventListener("visibilitychange", onVis);
-    void tick();
-    return () => { alive = false; clearTimeout(timer); document.removeEventListener("visibilitychange", onVis); };
-  }, []);
-  return { data, stale };
-}
+// (la carga de datos ya no vive acá: index.tsx usa la query reactiva `data` +
+// la mutación `refresh` de Lakebed; ver el comentario allá)
 
 export function useClock() {
   const [now, setNow] = useState(() => nowPY());
