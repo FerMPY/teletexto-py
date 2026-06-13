@@ -22,12 +22,14 @@ import type { Indexes } from "./state";
 
 const VS_YT = "https://www.youtube.com/@somosvssports/streams";   // canal de VS en YouTube (siempre anda)
 
-// src = se embebe; sin src = solo links (su señal no se deja incrustar)
-const EMBEDS: Record<ChannelKey, { src?: string; note: string }> = {
+// src = se embebe; sin src = solo links (su señal no se deja incrustar).
+// open = a dónde apunta "ABRIR" en la tarjeta de links (por defecto el sitio del
+// canal); Popu va al portal en vivo de GEN, que abierto en pestaña SÍ reproduce.
+const EMBEDS: Record<ChannelKey, { src?: string; open?: string; note: string }> = {
   gen:   { note: "GEN no deja incrustar su señal. La mejor calidad del partido está en YouTube." },
   trece: { src: "https://trece.com.py/en-vivo/",    note: "Reproductor oficial de Trece. Tocá ▶ adentro si no arranca solo." },
   uni:   { src: "https://unicanal.com.py/en-vivo/", note: "Señal en vivo oficial de Unicanal. Tocá ▶ adentro para arrancar." },
-  popu:  { src: "https://www.gen.com.py/live/", note: "Popu TV va por el portal en vivo de GEN (mismo grupo). Tocá ▶ adentro si no arranca." },
+  popu:  { open: "https://www.gen.com.py/live/", note: "Popu TV va por el portal en vivo de GEN (mismo grupo). Tampoco se deja incrustar; abrilo en pestaña nueva." },
   vs:    { note: "VS Sports transmite por la señal de GEN. Su video del partido va por YouTube (mejor calidad)." },
 };
 
@@ -149,7 +151,7 @@ export function Viewer({ match, ch, idx, nowK, onSwitch, onClose }: {
               </div>
               <div className="flex flex-col gap-2 w-full" style={{ maxWidth: "30em" }}>
                 <a className="tt-btn tt-glow" style={{ background: C.g, color: "#000", fontSize: "1.15em", padding: ".45em" }} href={ytHref} target="_blank" rel="noopener">{ytLabel}</a>
-                <a className="tt-btn" style={{ color: C.c, fontSize: "1.05em", padding: ".4em" }} href={CHANNELS[ch].url} target="_blank" rel="noopener">ABRIR {CHANNELS[ch].name} EN SU SITIO ↗</a>
+                <a className="tt-btn" style={{ color: C.c, fontSize: "1.05em", padding: ".4em" }} href={e.open || CHANNELS[ch].url} target="_blank" rel="noopener">ABRIR {CHANNELS[ch].name} EN SU SITIO ↗</a>
               </div>
             </div>
           )}
