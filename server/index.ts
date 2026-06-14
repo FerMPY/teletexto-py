@@ -416,9 +416,13 @@ export default capsule({
       text(ogCard(req.query.get("tag") || "MUNDIAL 2026", req.query.get("t") || "TELETEXTO PY", req.query.get("s") || "MUNDIAL 2026"),
         { headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": "max-age=3600" } })),
 
-    // página de compartir: HTML con og:* + redirección al hash de la app
+    // página de compartir: HTML con og:* + redirección al hash de la app.
+    // OJO: detrás del TLS de Lakebed la URL interna llega como http → forzamos
+    // https salvo en local, si no los crawlers rechazan la og:image (mixed content).
     share: endpoint({ method: "GET", path: "/s" }, (_ctx, req) => {
-      const origin = new URL(req.url).origin;
+      const host = req.headers.get("host") || new URL(req.url).host;
+      const proto = /^(localhost|127\.|0\.0\.0\.0)/.test(host) ? "http" : "https";
+      const origin = `${proto}://${host}`;
       const p = (req.query.get("p") || "100").replace(/[^a-z0-9-]/gi, "");
       return text(shareHtml(origin, p), { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "max-age=600" } });
     }),
