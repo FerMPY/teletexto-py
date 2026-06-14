@@ -1,5 +1,5 @@
-// P500 — VISOR: el partido en la misma página. Pestañas = todos los canales
-// (los de la grilla primero).
+// P500 — VISOR (EN VIVO): el partido en la misma página. Pestañas = todos los
+// canales (los de la grilla primero).
 //
 // REALIDAD DE LAS SEÑALES (verificado 2026-06-13, partido Brasil-Marruecos):
 //  - El video por partido de VS Sports en YouTube tiene la INCRUSTACIÓN
@@ -33,21 +33,24 @@ const EMBEDS: Record<ChannelKey, { src?: string; open?: string; note: string }> 
   vs:    { note: "VS Sports transmite por la señal de GEN. Su video del partido va por YouTube (mejor calidad)." },
 };
 
-// el hash ya identifica partido+canal → la URL del momento ES el deep link
+// el hash identifica partido+canal. Copiamos el link de COMPARTIR (/s?p=…), que
+// trae vista previa linda en WhatsApp/Telegram y redirige a la app por el hash.
 function CopyLink() {
   const [done, setDone] = useState(false);
   return (
     <button
       className="tt-btn"
       style={{ color: done ? C.g : C.c, marginLeft: "auto" }}
-      title="Copiar el link directo a esta señal/partido"
+      title="Copiar el link para compartir esta señal/partido (con vista previa)"
       onClick={() => {
-        navigator.clipboard?.writeText(location.href).then(() => {
+        const p = location.hash.slice(1) || "100";
+        const url = `${location.origin}/s?p=${encodeURIComponent(p)}`;
+        navigator.clipboard?.writeText(url).then(() => {
           setDone(true);
           setTimeout(() => setDone(false), 1800);
         });
       }}
-    >{done ? "COPIADO ✓" : "COPIAR LINK"}</button>
+    >{done ? "COPIADO ✓" : "COMPARTIR"}</button>
   );
 }
 

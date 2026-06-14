@@ -100,11 +100,19 @@ export function useClock() {
 // avisos de gol: detecta goles nuevos entre polls (no avisa el primer load
 // ni en pantalla completa, igual que el original)
 export type Toast = { id: number; title: string; sub: string; match: Match };
-export function useGoalToasts(idx: Indexes, nowK: string) {
+// onGoal: efecto extra por cada gol nuevo (pitido / aviso del navegador). Lo
+// guardamos en un ref para no re-suscribir el efecto y no perder goles.
+// `ready` = ya cargaron los datos. CLAVE: la línea base ("qué goles ya vi") se
+// fija RECIÉN cuando hay datos. Si se fijara antes (con goles vacíos), al llegar
+// los datos TODOS los goles parecerían nuevos y sonarían al abrir la página.
+// Así, al abrir, lo ya jugado cuenta como visto; solo suena lo que pasa en vivo.
+export function useGoalToasts(idx: Indexes, nowK: string, onGoal?: (t: Toast) => void, ready = true) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const prev = useRef<Indexes["goals"] | null>(null);
   const nextId = useRef(1);
+  const goalCb = useRef(onGoal); goalCb.current = onGoal;
   useEffect(() => {
+    if (!ready) return; // datos todavía sin cargar → no fijes línea base aún
     if (prev.current === null) { prev.current = idx.goals; return; }
     if (document.fullscreenElement) { prev.current = idx.goals; return; }
     const fresh: Toast[] = [];
@@ -131,7 +139,10 @@ export function useGoalToasts(idx: Indexes, nowK: string) {
     prev.current = idx.goals;
     if (fresh.length) {
       setToasts((t) => [...t, ...fresh]);
-      for (const f of fresh) setTimeout(() => setToasts((t) => t.filter((x) => x.id !== f.id)), 9000);
+      for (const f of fresh) {
+        try { goalCb.current?.(f); } catch { /* el efecto extra no debe romper el toast */ }
+        setTimeout(() => setToasts((t) => t.filter((x) => x.id !== f.id)), 9000);
+      }
     }
   }, [idx]);
   const dismiss = (id: number) => setToasts((t) => t.filter((x) => x.id !== id));

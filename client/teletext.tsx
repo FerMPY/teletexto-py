@@ -65,6 +65,7 @@ html,body{background:var(--tt-bg);}
 .tt-fast .tt-btn{flex:1; border:none; color:#000; font-size:1.05em; padding:.15em .4em; text-align:center; min-width:7em}
 .tt-fast .f-r{background:var(--tt-r)} .tt-fast .f-g{background:var(--tt-g)}
 .tt-fast .f-y{background:var(--tt-y)} .tt-fast .f-c{background:var(--tt-c)}
+.tt-fast .f-m{background:var(--tt-m)}
 .tt-fast .tt-btn:hover{filter:brightness(1.25)}
 .tt-fast .on{outline:3px solid #fff; outline-offset:-3px}
 /* chips de filtro */
@@ -107,7 +108,25 @@ html,body{background:var(--tt-bg);}
   font-size:clamp(18px,2.6vw,26px);
 }
 .tt-sub .s2{color:#fff; display:block; font-size:.8em}
-@media (max-width:640px){ .tt-row{gap:.35em} .tt-fast .tt-btn{min-width:5em} }
+/* ---- modos monocromo (novedad retro): solo reescriben la paleta, el video del
+   visor NO usa estas variables así que queda intacto ---- */
+.tt-amber{--tt-fg:#ffb454; --tt-y:#ffc973; --tt-c:#ffb454; --tt-g:#ffd591; --tt-r:#ff8c42; --tt-m:#ffae5e; --tt-dim:#9c6b2e; --tt-b:#3a2400}
+.tt-green{--tt-fg:#7cfc7c; --tt-y:#b6ffb6; --tt-c:#7cfc7c; --tt-g:#9dff9d; --tt-r:#5fd35f; --tt-m:#8cff8c; --tt-dim:#3f8f3f; --tt-b:#0b2e0b}
+/* ---- cinta de partidos en vivo ---- */
+.tt-ticker{display:flex; align-items:stretch; border:1px solid #1d1d1d; background:#070707; margin:.25em 0; overflow:hidden}
+.tt-ticker-tag{flex:none; background:var(--tt-g); color:#000; padding:0 .5em; display:flex; align-items:center; font-size:.9em; letter-spacing:.05em}
+.tt-ticker-win{position:relative; overflow:hidden; flex:1}
+.tt-tape{display:inline-flex; align-items:center; white-space:nowrap; will-change:transform; animation-name:ttmarquee; animation-timing-function:linear; animation-iteration-count:infinite}
+.tt-ticker-win:hover .tt-tape{animation-play-state:paused}
+@keyframes ttmarquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.tt-tape-item{font:inherit; text-transform:uppercase; background:transparent; border:none; color:inherit; cursor:pointer; padding:0 .25em}
+.tt-tape-item:hover{color:#fff}
+.tt-tape-sep{padding:0 1.2em; color:var(--tt-dim)}
+/* ---- barra de preferencias (modo) ---- */
+.tt-set{display:flex; gap:.6em; align-items:center; flex-wrap:wrap; font-size:.82em}
+.tt-set .tt-chip{border:1px solid #2a2a2a; padding:0 .35em}
+.tt-set .tt-chip.on{border-color:currentColor}
+@media (max-width:640px){ .tt-row{gap:.35em} .tt-fast .tt-btn{min-width:5em} .tt-ticker-tag{font-size:.78em} }
 `;
 
 export const C = {

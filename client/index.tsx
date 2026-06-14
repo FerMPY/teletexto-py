@@ -13,8 +13,14 @@ import { C, TT_CSS } from "./teletext";
 import { Tabla } from "./tabla";
 import { Viewer } from "./viewer";
 import { buildIndexes, chOf, liveMatches, matchState, mKey, scoreStr, useClock, useGoalToasts } from "./state";
+import { PrefsProvider, usePrefs } from "./prefs";
+import { Settings } from "./settings";
+import { Ticker } from "./ticker";
+import { goalBeep, notifyGoal, unlockAudio } from "./alerts";
 
 type Page = 100 | 200 | 300;
+// AGENDA y TABLA (info) a la izquierda; PRODE y EN VIVO (acciones) a la derecha.
+// La TABLA junta grupos + clasificación/llaves + goleadores en una sola página.
 const PAGES: { p: Page; label: string; cls: string }[] = [
   { p: 100, label: "AGENDA", cls: "f-r" },
   { p: 200, label: "TABLA", cls: "f-g" },
@@ -24,9 +30,9 @@ const PAGES: { p: Page; label: string; cls: string }[] = [
 const slugify = (s: string) => s.replace(/[^a-z0-9]+/gi, "-");
 
 /* hash ↔ estado, como los números de página del teletexto de verdad:
-     #100 / #200 / #300                  páginas
+     #100 / #200 / #300                  páginas (AGENDA / TABLA / PRODE)
      #300-<equipo-equipo>                prode apuntado a ese partido
-     #500-<canal>                        señal suelta de un canal
+     #500-<canal>                        señal suelta de un canal (EN VIVO / visor)
      #500-<canal>-<equipo-equipo>        ese partido en ese canal
    El partido va por par de equipos (slug de pk, igual que el prode) — acá
    mKey = pk(a,b), NO la hora. Todos linkeables; atrás cierra el visor. */
@@ -44,7 +50,13 @@ function parseHash(): Nav {
   return { page, watch: null, target };
 }
 
+// raíz: provee las preferencias (modo CRT/paleta/guaraní/avisos) a todo el árbol
 export function App() {
+  return <PrefsProvider><AppInner /></PrefsProvider>;
+}
+
+function AppInner() {
+  const { prefs } = usePrefs();
   // favicon (el scaffold de lakebed deja el nombre crudo del capsule) + PWA:
   // manifest y service worker (cachea el shell — abre al instante y aguanta
   // sin red o con la cuota agotada; /api siempre va a la red)
@@ -83,7 +95,22 @@ export function App() {
   const atMs = Number(cacheRow?.at || 0);
   const now = useClock();
   const idx = buildIndexes(data);
-  const { toasts, dismiss } = useGoalToasts(idx, now.key);
+  // gol nuevo → pitido y/o aviso del navegador, según las preferencias. El
+  // closure se recrea cada render, así que lee siempre las prefs actuales.
+  // (Ya no mostramos tarjetas emergentes: la cinta de arriba es el aviso visual
+  // y además es clickeable; el pitido/aviso cubren el momento del gol.)
+  useGoalToasts(idx, now.key, (t) => {
+    if (prefs.sfx) goalBeep();
+    if (prefs.notify) notifyGoal(t);
+  }, data != null);
+  // el audio del navegador se desbloquea recién con un gesto: lo armamos al
+  // primer toque/tecla para que el pitido del gol pueda sonar después
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => { window.removeEventListener("pointerdown", unlock); window.removeEventListener("keydown", unlock); };
+  }, []);
   // datos congelados: el último fetch real quedó viejo (cuota agotada o fuente
   // caída). La agenda/los canales siguen; los marcadores vuelven solos.
   const stale = atMs > 0 && Date.now() - atMs > 5 * 60_000;
@@ -170,7 +197,7 @@ export function App() {
     else { setFlash("NO HAY PARTIDOS EN VIVO AHORA"); setTimeout(() => setFlash(""), 4000); }
   };
 
-  // tipeo de número de página (1xx/2xx/3xx; 5xx abre el visor del vivo)
+  // tipeo de número de página (1xx AGENDA · 2xx TABLA · 3xx PRODE; 5xx EN VIVO)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName || "").toLowerCase();
@@ -199,7 +226,7 @@ export function App() {
   const MES3 = ["", "ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"][Number(mo)];
 
   return (
-    <div className="tt tt-crt">
+    <div className={`tt${prefs.crt ? " tt-crt" : ""}${prefs.theme !== "color" ? ` tt-${prefs.theme}` : ""}`}>
       <style>{TT_CSS}</style>
       <div className="mx-auto max-w-6xl px-2 pt-1" style={{ paddingBottom: "calc(6rem + env(safe-area-inset-bottom))" }}>
 
@@ -212,6 +239,10 @@ export function App() {
           </span>
           <span style={{ color: C.c }}>{d} {MES3} {now.clock}</span>
         </div>
+
+        {/* preferencias (modo) + cinta de partidos en vivo */}
+        <Settings />
+        <Ticker idx={idx} nowK={now.key} onWatch={(m) => openWatch(m, chOf(m)[0])} />
 
         {flash && (
           <div className="tt-flash">
@@ -231,18 +262,17 @@ export function App() {
 
         {/* página activa */}
         {page === 100 && <Agenda idx={idx} nowK={now.key} today={now.date} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} standings={data?.standings} />}
-        {page === 200 && <Tabla data={data} />}
+        {page === 200 && <Tabla data={data} idx={idx} nowK={now.key} onWatch={openWatch} />}
         {page === 300 && <Prode data={data} idx={idx} nowK={now.key} nowMs={Date.now()} target={prodeTarget} />}
 
-        {/* fastext: los botones de colores del control */}
+        {/* fastext: info (AGENDA · TABLA) a la izquierda; acciones (PRODE · EN VIVO)
+            a la derecha, separadas por un hueco */}
         <div className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-6xl px-2" style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))", paddingTop: "0.25rem", background: "#000" }}>
           <div className="tt-fast">
             {PAGES.map(({ p, label, cls }) => (
-              <button key={p} className={`tt-btn ${cls}${page === p && !watch ? " on" : ""}`} onClick={() => setPage(p)}>
-                {label} {p}
-              </button>
+              <button key={p} className={`tt-btn ${cls}${page === p && !watch ? " on" : ""}`} onClick={() => setPage(p)}>{label} {p}</button>
             ))}
-            <button className="tt-btn f-c" onClick={goLive}>EN VIVO 500</button>
+            <button className={`tt-btn f-c${watch ? " on" : ""}`} onClick={goLive}>EN VIVO 500</button>
           </div>
         </div>
 
@@ -254,16 +284,6 @@ export function App() {
             onClose={closeWatch}
           />
         )}
-
-        {/* subtítulos de gol */}
-        {!document.fullscreenElement && toasts.map((t, i) => (
-          <button
-            key={t.id} className="tt-sub tt-glow" style={{ bottom: `${8 + i * 9}vh` }}
-            onClick={() => { dismiss(t.id); openWatch(t.match, chOf(t.match)[0]); }}
-          >
-            ⚽ {t.title}<span className="s2">{t.sub} — TOCA PARA VER</span>
-          </button>
-        ))}
       </div>
     </div>
   );

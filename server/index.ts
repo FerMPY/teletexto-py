@@ -11,8 +11,8 @@
 // (npx lakebed claim); en deploys anónimos /api/data degrada a vacío.
 import { capsule, endpoint, json, mutation, query, string, table, text } from "lakebed/server";
 import { MATCHES } from "../shared/matches";
-import { canon, clampGoals, kickoffEpoch, pk, prodePoints } from "../shared/mundial";
-import type { GoalRow, LeaderRow, ScoreRow, StandingGroup, VideoRow } from "../shared/mundial";
+import { canon, CHANNELS, clampGoals, kickoffEpoch, pk, prodePoints } from "../shared/mundial";
+import type { ChannelKey, GoalRow, LeaderRow, Match, ScoreRow, StandingGroup, VideoRow } from "../shared/mundial";
 
 const UA = "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36";
 // mínimo entre fetches reales a las fuentes (y reescrituras del caché). Es el
@@ -225,6 +225,95 @@ self.addEventListener("fetch", (e) => {
 });
 `;
 
+/* ---------- COMPARTIR (Open Graph) ----------
+   Los crawlers (WhatsApp, Telegram, Twitter…) NO ejecutan JS y NO ven el hash
+   (#100, #500-…), así que el shell del SPA no sirve para la vista previa. La
+   solución: links de path `/s?p=<destino>` que devuelven un HTML real con las
+   etiquetas og:* y redirigen al humano a la app por el hash.
+   La imagen (`/api/og.svg`) es un SVG: se ve en Telegram/Discord/iMessage; en
+   WhatsApp/Facebook (que ignoran SVG) igual queda la tarjeta con título y texto. */
+const xmlEsc = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c] as string));
+const slugify = (s: string) => s.replace(/[^a-z0-9]+/gi, "-");
+const matchBySlug = (s: string): Match | null => MATCHES.find((m) => slugify(pk(m.a, m.b)) === s) || null;
+const MES3 = ["", "ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+const fechaCorta = (m: Match) => `${Number(m.d.slice(8, 10))} ${MES3[Number(m.d.slice(5, 7))]} ${m.t} HS`;
+
+// tarjeta teletexto 1200×630 (sin emojis: los renderers de SVG no los dibujan)
+function ogCard(tag: string, title: string, sub: string): string {
+  // partir el título en hasta 2 líneas legibles
+  const words = title.toUpperCase().split(/\s+/);
+  const lines: string[] = []; let cur = "";
+  for (const w of words) {
+    if ((cur + " " + w).trim().length > 20 && cur) { lines.push(cur); cur = w; } else cur = (cur + " " + w).trim();
+    if (lines.length === 2) break;
+  }
+  if (cur && lines.length < 2) lines.push(cur);
+  const fs = lines.some((l) => l.length > 15) ? 92 : 110;
+  const ty = lines.length === 2 ? 300 : 340;
+  const tspans = lines.map((l, i) => `<text x="60" y="${ty + i * (fs + 14)}" font-family="'Courier New',monospace" font-weight="bold" font-size="${fs}" fill="#ffd23d">${xmlEsc(l)}</text>`).join("");
+  const stripe = ["#ff4040", "#3ddc3d", "#ffd23d", "#46e0e0"].map((c, i) => `<rect x="${60 + i * 90}" y="560" width="80" height="22" fill="${c}"/>`).join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+<rect width="1200" height="630" fill="#000"/>
+<rect x="0" y="0" width="1200" height="84" fill="#1414c8"/>
+<text x="60" y="58" font-family="'Courier New',monospace" font-weight="bold" font-size="46" fill="#ffd23d">TELETEXTO PY</text>
+<text x="1140" y="58" text-anchor="end" font-family="'Courier New',monospace" font-size="40" fill="#46e0e0">MUNDIAL 2026</text>
+<text x="60" y="180" font-family="'Courier New',monospace" font-size="44" fill="#f06df0">${xmlEsc(tag.toUpperCase())}</text>
+${tspans}
+<text x="60" y="510" font-family="'Courier New',monospace" font-size="44" fill="#46e0e0">${xmlEsc(sub.toUpperCase())}</text>
+${stripe}
+<text x="1140" y="600" text-anchor="end" font-family="'Courier New',monospace" font-size="30" fill="#7d7d7d">teletexto.lakebed.app</text>
+</svg>`;
+}
+
+// destino (p) → {tag, title, sub, desc} para las etiquetas og y la imagen
+function shareMeta(p: string): { tag: string; title: string; sub: string; desc: string } {
+  const v = p.match(/^500-([a-z]+)(?:-(.+))?$/i);
+  if (v) {
+    const ch = CHANNELS[v[1] as ChannelKey]?.name || v[1].toUpperCase();
+    const m = v[2] ? matchBySlug(v[2]) : null;
+    if (m) return { tag: "P500 · EN VIVO", title: `${m.a} vs ${m.b}`, sub: fechaCorta(m), desc: `Mirá ${m.a} vs ${m.b} del Mundial 2026 con los canales paraguayos: marcador en vivo y dónde verlo, en TELETEXTO PY.` };
+    return { tag: "P500 · EN VIVO", title: `${ch} en vivo`, sub: "MUNDIAL 2026", desc: `Mirá ${ch} en TELETEXTO PY: el Mundial 2026 con los canales paraguayos.` };
+  }
+  const pg = p.match(/^([123])00(?:-(.+))?$/);
+  if (pg) {
+    const n = Number(pg[1]);
+    const m = pg[2] ? matchBySlug(pg[2]) : null;
+    if (n === 3 && m) return { tag: "P300 · PRODE", title: `Prode: ${m.a} vs ${m.b}`, sub: fechaCorta(m), desc: `Pronosticá ${m.a} vs ${m.b} en el prode de TELETEXTO PY — Mundial 2026.` };
+    const map: Record<number, [string, string, string]> = {
+      1: ["P100 · AGENDA", "Agenda del Mundial 2026", "Todos los partidos, marcadores en vivo y los canales paraguayos que los pasan."],
+      2: ["P200 · TABLA", "Tabla del Mundial 2026", "Los 12 grupos, los clasificados, la pelea de los mejores terceros y los goleadores."],
+      3: ["P300 · PRODE", "Prode del Mundial 2026", "Pronosticá los partidos y competí en la tabla del prode."],
+    };
+    const [tag, title, desc] = map[n] || map[1];
+    return { tag, title, sub: "MUNDIAL 2026", desc };
+  }
+  return { tag: "MUNDIAL 2026", title: "TELETEXTO PY", sub: "MUNDIAL 2026", desc: "El Mundial 2026 con los canales paraguayos: agenda, marcadores en vivo, tabla, prode y visor." };
+}
+
+function shareHtml(origin: string, p: string): string {
+  const { tag, title, sub, desc } = shareMeta(p);
+  const app = `${origin}/#${p}`;
+  const img = `${origin}/api/og.svg?tag=${encodeURIComponent(tag)}&t=${encodeURIComponent(title)}&s=${encodeURIComponent(sub)}`;
+  const fullTitle = `${title} · TELETEXTO PY`;
+  const M = (prop: string, val: string, name = false) => `<meta ${name ? "name" : "property"}="${prop}" content="${xmlEsc(val)}">`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${xmlEsc(fullTitle)}</title>
+${M("description", desc, true)}
+${M("og:type", "website")}${M("og:site_name", "TELETEXTO PY")}
+${M("og:title", fullTitle)}${M("og:description", desc)}
+${M("og:url", app)}${M("og:image", img)}
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+${M("twitter:card", "summary_large_image", true)}
+${M("twitter:title", fullTitle, true)}${M("twitter:description", desc, true)}${M("twitter:image", img, true)}
+<link rel="canonical" href="${xmlEsc(app)}">
+<meta http-equiv="refresh" content="0; url=${xmlEsc(app)}">
+</head><body style="background:#000;color:#ffd23d;font-family:'Courier New',monospace;padding:2rem">
+ABRIENDO TELETEXTO PY… <a href="${xmlEsc(app)}" style="color:#46e0e0">tocá acá si no abre solo</a>.
+<script>location.replace(${JSON.stringify(app)})</script>
+</body></html>`;
+}
+
 export default capsule({
   name: "mundial-py",
 
@@ -321,5 +410,17 @@ export default capsule({
 
     icon: endpoint({ method: "GET", path: "/api/icon.svg" }, () =>
       text(ICON_SVG, { headers: { "Content-Type": "image/svg+xml", "Cache-Control": "max-age=86400" } })),
+
+    // tarjeta Open Graph (SVG) para la vista previa al compartir
+    og: endpoint({ method: "GET", path: "/api/og.svg" }, (_ctx, req) =>
+      text(ogCard(req.query.get("tag") || "MUNDIAL 2026", req.query.get("t") || "TELETEXTO PY", req.query.get("s") || "MUNDIAL 2026"),
+        { headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": "max-age=3600" } })),
+
+    // página de compartir: HTML con og:* + redirección al hash de la app
+    share: endpoint({ method: "GET", path: "/s" }, (_ctx, req) => {
+      const origin = new URL(req.url).origin;
+      const p = (req.query.get("p") || "100").replace(/[^a-z0-9-]/gi, "");
+      return text(shareHtml(origin, p), { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "max-age=600" } });
+    }),
   },
 });
