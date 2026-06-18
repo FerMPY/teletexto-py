@@ -127,7 +127,11 @@ async function standings(): Promise<StandingGroup[]> {
       });
     }
   } catch { /* sin tabla */ }
-  const v = Object.entries(groups).map(([group, rows]) => ({ group, rows: rows.sort((a, b) => a.pos - b.pos) }));
+  // FIFA devuelve los grupos en orden arbitrario (J, K, L, E, A, ...): ordenamos
+  // por nombre de grupo (A→L) para que la tabla salga prolija.
+  const v = Object.entries(groups)
+    .map(([group, rows]) => ({ group, rows: rows.sort((a, b) => a.pos - b.pos) }))
+    .sort((a, b) => a.group.localeCompare(b.group, "es", { numeric: true }));
   sc = { t: Date.now(), v };
   return v;
 }
@@ -150,10 +154,31 @@ async function fetchGoals(s: ScoreRow): Promise<void> {
     goalCache.set(s.idMatch, { teams: s.teams, events, final: s.status !== 1 && s.status !== 3 });
   } catch { /* este partido no devolvió detalle ahora */ }
 }
-async function goals(scores: ScoreRow[]): Promise<GoalRow[]> {
+async function goals(scores: ScoreRow[], db?: any): Promise<GoalRow[]> {
+  // El goalCache vive en memoria y se borra cuando el capsule duerme (cold start).
+  // Lo resembramos del snapshot persistido para NO reconstruir los goleadores de
+  // a poco cada vez: si no, en un día sin partidos en vivo (refresh cada 5 min)
+  // tarda ~20 min en rearmarse y el siguiente cold start lo resetea otra vez.
+  if (goalCache.size === 0 && db) {
+    try {
+      const snap = db.cache.where("k", "goalsnap").all()[0];
+      if (snap?.blob) for (const [k, v] of JSON.parse(snap.blob)) goalCache.set(k, v);
+    } catch { /* snapshot corrupto → se rearma del fetch */ }
+  }
   const live = scores.filter((s) => s.status === 3);
-  const finishedNew = scores.filter((s) => s.status !== 1 && s.status !== 3 && !goalCache.get(s.idMatch)?.final).slice(0, 6);
+  // los terminados se piden UNA vez (quedan cacheados como final); subimos el lote
+  // a 12 para absorber una jornada entera en un ciclo tras un cold start.
+  const finishedNew = scores.filter((s) => s.status !== 1 && s.status !== 3 && !goalCache.get(s.idMatch)?.final).slice(0, 12);
   await Promise.all([...live, ...finishedNew].map(fetchGoals));
+  // persistimos el caché para que sobreviva al próximo cold start
+  if (db && goalCache.size) {
+    try {
+      const blob = JSON.stringify([...goalCache.entries()]);
+      const row = db.cache.where("k", "goalsnap").all()[0];
+      if (row) db.cache.update(row.id, { blob, at: String(Date.now()) });
+      else db.cache.insert({ k: "goalsnap", blob, at: String(Date.now()) });
+    } catch { /* no se pudo snapshotear → el caché en memoria sigue sirviendo */ }
+  }
   return [...goalCache.values()].filter((g) => g.events.length).map((g) => ({ teams: g.teams, events: g.events }));
 }
 
@@ -336,8 +361,8 @@ export default capsule({
     // query reactiva `data` — un solo write se propaga a todos los que miran,
     // sin que cada cliente pague un pedido a un endpoint (que cuenta como mutación).
     cache: table({
-      k: string(),          // siempre "data" (fila única)
-      blob: string(),       // JSON del payload completo
+      k: string(),          // "data" (payload completo) | "goalsnap" (caché de goleadores)
+      blob: string(),       // JSON del payload
       at: string(),         // epoch ms del último fetch real
     }),
   },
@@ -376,7 +401,7 @@ export default capsule({
       const cur = ctx.db.cache.where("k", "data").all()[0] as any;
       if (cur && Date.now() - Number(cur.at || 0) < REFRESH_MS) return; // ya fresco
       const [gen, vs, scores] = await Promise.all([genVideos(), vsVideos(), fifaScores()]);
-      const [table_, gls] = await Promise.all([standings(), goals(scores)]); // dependen de scores
+      const [table_, gls] = await Promise.all([standings(), goals(scores, ctx.db)]); // dependen de scores
       let leaderboard: LeaderRow[] = [];
       try { leaderboard = buildLeaderboard(ctx.db.predictions.all(), scores); } catch { /* sin prode */ }
       const blob = JSON.stringify({ videos: { gen, vs }, scores, standings: table_, goals: gls, leaderboard, fetched: Math.floor(Date.now() / 1000) });
