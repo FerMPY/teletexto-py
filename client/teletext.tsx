@@ -3,7 +3,6 @@
 import type { ComponentChildren } from "preact";
 
 export const TT_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 :root{
   --tt-bg:#000;
   --tt-fg:#e9e9e9;
@@ -72,6 +71,12 @@ html,body{background:var(--tt-bg);}
 .tt-chip{background:transparent;border:none;color:var(--tt-c);cursor:pointer;font:inherit;text-transform:uppercase;padding:0 .2em}
 .tt-chip:hover{color:#fff}
 .tt-chip.on{background:var(--tt-c);color:#000}
+/* nombre de equipo clickeable → su trayectoria (P700). Hereda color/tamaño; solo
+   se distingue por el subrayado punteado al pasar el mouse */
+.tt-name{background:transparent;border:none;font:inherit;color:inherit;cursor:pointer;padding:0;text-transform:inherit;text-align:left}
+.tt-name:hover{text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px}
+/* racha: puntitos G/E/P */
+.tt-dots{letter-spacing:.12em; white-space:nowrap}
 /* inputs del prode */
 .tt-in{
   width:2.2em; font:inherit; text-align:center; background:#101010;
@@ -127,6 +132,21 @@ html,body{background:var(--tt-bg);}
 .tt-set .tt-chip{border:1px solid #2a2a2a; padding:0 .35em}
 .tt-set .tt-chip.on{border-color:currentColor}
 @media (max-width:640px){ .tt-row{gap:.35em} .tt-fast .tt-btn{min-width:5em} .tt-ticker-tag{font-size:.78em} }
+
+/* ---- pantalla de carga (boot): tapa el contenido hasta que Tailwind (que viene
+   del CDN, asíncrono) ya aplicó, así no se ve el "salto" de layout sin estilos.
+   Usa SOLO CSS propio (carga con la app, antes que el CDN), nunca clases de
+   Tailwind. Se quita con un fundido cuando los estilos están listos (o por
+   timeout, para que un CDN lento/caído nunca deje el loader pegado). ---- */
+.tt-boot{
+  position:fixed; inset:0; z-index:200; background:#000; color:var(--tt-y);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:.5em; text-align:center; padding:1em;
+  font-family:'VT323',ui-monospace,monospace; text-transform:uppercase; letter-spacing:.04em;
+  font-size:clamp(22px,5vw,38px); transition:opacity .35s ease;
+}
+.tt-boot.hide{opacity:0; pointer-events:none}
+.tt-boot .b2{font-size:.5em; color:var(--tt-c)}
 `;
 
 export const C = {
@@ -156,4 +176,25 @@ export function Live({ min }: { min?: string | null }) {
       <span className="tt-blink">●</span> EN VIVO{min ? ` ${min}` : ""}
     </span>
   );
+}
+
+// racha: un puntito por partido jugado (verde gana / gris empata / rojo pierde),
+// del más viejo al más nuevo
+export function FormDots({ form }: { form: { r: "W" | "D" | "L" }[] }) {
+  if (!form.length) return null;
+  const col = (r: string) => (r === "W" ? C.g : r === "L" ? C.r : C.dim);
+  return (
+    <span className="tt-dots tt-glow" title="Racha: ● gana · ● empata · ● pierde">
+      {form.map((f, i) => <span key={i} style={{ color: col(f.r) }}>●</span>)}
+    </span>
+  );
+}
+
+// nombre de equipo: clickeable (abre su trayectoria) si hay onTeam, si no texto
+// plano. Pasa el nombre tal cual; quien lo recibe lo normaliza con canon().
+export function TeamLink({ name, flag, color, onTeam, flagAfter }: { name: string; flag?: string; color?: string; onTeam?: (name: string) => void; flagAfter?: boolean }) {
+  const fl = flag ? (flagAfter ? ` ${flag}` : `${flag} `) : "";
+  const label = flagAfter ? `${name}${fl}` : `${fl}${name}`;
+  if (!onTeam) return <span style={color ? { color } : undefined}>{label}</span>;
+  return <button className="tt-name" style={color ? { color } : undefined} onClick={() => onTeam(name)} title={`Ver la trayectoria de ${name}`}>{label}</button>;
 }

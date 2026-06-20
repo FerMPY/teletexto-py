@@ -149,6 +149,26 @@ export function useGoalToasts(idx: Indexes, nowK: string, onGoal?: (t: Toast) =>
   return { toasts, dismiss };
 }
 
+// trayectoria de un equipo: sus partidos TERMINADOS con resultado (G/E/P), del
+// más viejo al más nuevo (orden de la agenda). teamCanon = canon(nombre).
+export type FormResult = "W" | "D" | "L";
+export type FormGame = { r: FormResult; m: Match; my: number; op: number };
+export function teamForm(teamCanon: string, idx: Indexes, nowK: string): FormGame[] {
+  const out: FormGame[] = [];
+  for (const m of MATCHES) {
+    const isA = canon(m.a) === teamCanon, isB = canon(m.b) === teamCanon;
+    if (!isA && !isB) continue;
+    const st = matchState(m, idx, nowK);
+    if (st.hs == null || !st.final) continue;
+    const my = isA ? st.hs : st.as!, op = isA ? st.as! : st.hs;
+    out.push({ r: my > op ? "W" : my < op ? "L" : "D", m, my, op });
+  }
+  return out;
+}
+// todos los partidos de un equipo (jugados + por jugar), en orden de agenda
+export const teamMatches = (teamCanon: string) =>
+  MATCHES.filter((m) => canon(m.a) === teamCanon || canon(m.b) === teamCanon);
+
 export const liveMatches = (idx: Indexes, nowK: string) => MATCHES.filter((m) => matchState(m, idx, nowK).live);
 export const nextMatch = (nowK: string) => MATCHES.find((m) => tKey(m) > nowK) || null;
 export const nextPy = (idx: Indexes, nowK: string) =>

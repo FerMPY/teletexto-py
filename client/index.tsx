@@ -11,6 +11,7 @@ import { Agenda } from "./agenda";
 import { Prode } from "./prode";
 import { C, TT_CSS } from "./teletext";
 import { Tabla } from "./tabla";
+import { TeamPage } from "./team";
 import { Viewer } from "./viewer";
 import { buildIndexes, chOf, liveMatches, matchState, mKey, scoreStr, useClock, useGoalToasts } from "./state";
 import { PrefsProvider, usePrefs } from "./prefs";
@@ -27,7 +28,7 @@ const PAGES: { p: Page; label: string; cls: string }[] = [
   { p: 300, label: "PRODE", cls: "f-y" },
 ];
 
-const slugify = (s: string) => s.replace(/[^a-z0-9]+/gi, "-");
+const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/gi, "-");
 
 /* hash ↔ estado, como los números de página del teletexto de verdad:
      #100 / #200 / #300                  páginas (AGENDA / TABLA / PRODE)
@@ -37,17 +38,21 @@ const slugify = (s: string) => s.replace(/[^a-z0-9]+/gi, "-");
    El partido va por par de equipos (slug de pk, igual que el prode) — acá
    mKey = pk(a,b), NO la hora. Todos linkeables; atrás cierra el visor. */
 const matchBySlug = (s: string) => MATCHES.find((x) => slugify(pk(x.a, x.b)) === s) || null;
-type Nav = { page: Page; watch: { m: Match | null; ch: ChannelKey } | null; target: string | null };
+// nombre de equipo ↔ slug (#700-<equipo>): la trayectoria de una selección
+const teamBySlug = (s: string) => { for (const m of MATCHES) { if (slugify(m.a) === s) return m.a; if (slugify(m.b) === s) return m.b; } return null; };
+type Nav = { page: Page; watch: { m: Match | null; ch: ChannelKey } | null; target: string | null; team: string | null };
 function parseHash(): Nav {
   const h = decodeURIComponent(location.hash.slice(1));
   const v = h.match(/^500-([a-z]+)(?:-(.+))?$/i);
   if (v && CH_ORDER.includes(v[1] as ChannelKey)) {
-    return { page: 100, watch: { m: v[2] ? matchBySlug(v[2]) : null, ch: v[1] as ChannelKey }, target: null };
+    return { page: 100, watch: { m: v[2] ? matchBySlug(v[2]) : null, ch: v[1] as ChannelKey }, target: null, team: null };
   }
+  const tm = h.match(/^700-(.+)$/);
+  if (tm) return { page: 100, watch: null, target: null, team: teamBySlug(tm[1]) };
   const p = h.match(/^([123])00(?:-(.+))?$/);
   const page = (p ? Number(p[1]) * 100 : 100) as Page;
   const target = page === 300 && p?.[2] ? (matchBySlug(p[2]) ? pk(matchBySlug(p[2])!.a, matchBySlug(p[2])!.b) : null) : null;
-  return { page, watch: null, target };
+  return { page, watch: null, target, team: null };
 }
 
 // raíz: provee las preferencias (modo CRT/paleta/guaraní/avisos) a todo el árbol
@@ -57,6 +62,23 @@ export function App() {
 
 function AppInner() {
   const { prefs } = usePrefs();
+  // pantalla de carga hasta que Tailwind (CDN asíncrono) aplicó: sondea una clase
+  // de Tailwind (.flex) hasta que rinde display:flex, y recién ahí muestra la app
+  // (evita el "salto" de layout sin estilos). Timeout de 2.5s por si el CDN no
+  // llega: mostramos igual, antes que dejar el loader pegado para siempre.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let raf = 0, done = false;
+    const probe = document.createElement("div");
+    probe.className = "flex";
+    probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none";
+    document.body.appendChild(probe);
+    const finish = () => { if (done) return; done = true; cancelAnimationFrame(raf); clearTimeout(to); probe.remove(); setReady(true); };
+    const check = () => { if (done) return; if (getComputedStyle(probe).display === "flex") finish(); else raf = requestAnimationFrame(check); };
+    const to = setTimeout(finish, 2500);
+    raf = requestAnimationFrame(check);
+    return () => { done = true; cancelAnimationFrame(raf); clearTimeout(to); probe.remove(); };
+  }, []);
   // favicon (el scaffold de lakebed deja el nombre crudo del capsule) + PWA:
   // manifest y service worker (cachea el shell — abre al instante y aguanta
   // sin red o con la cuota agotada; /api siempre va a la red)
@@ -69,6 +91,11 @@ function AppInner() {
     if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
     const head = (tag: string, attrs: Record<string, string>) =>
       document.head.appendChild(Object.assign(document.createElement(tag), attrs));
+    // fuente VT323 NO bloqueante (antes iba por @import en el CSS, que retrasaba
+    // el primer pintado). Mientras carga se ve la monoespaciada de respaldo y
+    // luego intercambia (display=swap); la fuente es la marca, vale el swap chico.
+    head("link", { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" });
+    head("link", { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=VT323&display=swap" });
     head("link", { rel: "manifest", href: "api/manifest.webmanifest" });
     head("meta", { name: "theme-color", content: "#000000" });
     head("meta", { name: "apple-mobile-web-app-capable", content: "yes" });
@@ -158,6 +185,7 @@ function AppInner() {
   const [init] = useState(parseHash);
   const [page, setPageRaw] = useState<Page>(init.page);
   const [watch, setWatchRaw] = useState<{ m: Match | null; ch: ChannelKey } | null>(init.watch);
+  const [team, setTeamRaw] = useState<string | null>(init.team); // trayectoria abierta (P700)
   const [prodeTarget, setProdeTarget] = useState<string | null>(init.target); // partido al que saltar en P300
   const [buf, setBuf] = useState(""); // dígitos tipeados (navegación por número de página)
   const [flash, setFlash] = useState("");
@@ -166,17 +194,29 @@ function AppInner() {
   useEffect(() => {
     const onPop = () => {
       const s = parseHash();
-      setPageRaw(s.page); setWatchRaw(s.watch);
+      setPageRaw(s.page); setWatchRaw(s.watch); setTeamRaw(s.team);
       if (s.target) setProdeTarget(s.target);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // navegar a una página cierra el visor (como tipear un número en el control)
+  // navegar a una página cierra el visor y la trayectoria (como tipear un número)
   const setPage = (p: Page, suffix?: string) => {
-    setWatchRaw(null); setPageRaw(p);
+    setWatchRaw(null); setTeamRaw(null); setPageRaw(p);
     history.replaceState(null, "", `#${p}${suffix ? `-${suffix}` : ""}`);
+  };
+  // abrir la trayectoria de un equipo agrega UNA entrada de historial (atrás vuelve)
+  const openTeam = (name: string) => {
+    const h = `#700-${slugify(name)}`;
+    if (team) history.replaceState({ tt: 700 }, "", h);
+    else history.pushState({ tt: 700 }, "", h);
+    setTeamRaw(name); setWatchRaw(null);
+    window.scrollTo(0, 0);
+  };
+  const closeTeam = () => {
+    if ((history.state as { tt?: number } | null)?.tt === 700) history.back();
+    else { setTeamRaw(null); history.replaceState(null, "", `#${page}`); }
   };
   // abrir el visor agrega UNA entrada de historial (atrás lo cierra); cambiar
   // de canal adentro solo reescribe el hash
@@ -221,13 +261,20 @@ function AppInner() {
     return () => document.removeEventListener("keydown", onKey);
   });
 
-  const pageNo = watch ? 500 : page;
+  const pageNo = watch ? 500 : team ? 700 : page;
   const [, mo, d] = now.date.split("-");
   const MES3 = ["", "ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"][Number(mo)];
 
   return (
     <div className={`tt${prefs.crt ? " tt-crt" : ""}${prefs.theme !== "color" ? ` tt-${prefs.theme}` : ""}`}>
       <style>{TT_CSS}</style>
+
+      {/* boot: tapa el salto de estilos hasta que Tailwind aplicó (ver arriba) */}
+      <div className={`tt-boot${ready ? " hide" : ""}`} aria-hidden={ready}>
+        <div className="tt-glow">📺 TELETEXTO PY</div>
+        <div className="b2 tt-blink">CARGANDO…</div>
+      </div>
+
       <div className="mx-auto max-w-6xl px-2 pt-1" style={{ paddingBottom: "calc(6rem + env(safe-area-inset-bottom))" }}>
 
         {/* cabecera de teletexto: página · servicio · fecha · reloj */}
@@ -260,17 +307,23 @@ function AppInner() {
           </div>
         )}
 
-        {/* página activa */}
-        {page === 100 && <Agenda idx={idx} nowK={now.key} today={now.date} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} standings={data?.standings} />}
-        {page === 200 && <Tabla data={data} idx={idx} nowK={now.key} onWatch={openWatch} />}
-        {page === 300 && <Prode data={data} idx={idx} nowK={now.key} nowMs={Date.now()} target={prodeTarget} />}
+        {/* página activa — la trayectoria de un equipo (P700) tapa la página actual */}
+        {team ? (
+          <TeamPage team={team} idx={idx} nowK={now.key} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} onTeam={openTeam} onClose={closeTeam} standings={data?.standings} />
+        ) : (
+          <>
+            {page === 100 && <Agenda idx={idx} nowK={now.key} today={now.date} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} onTeam={openTeam} standings={data?.standings} />}
+            {page === 200 && <Tabla data={data} idx={idx} nowK={now.key} onWatch={openWatch} onTeam={openTeam} />}
+            {page === 300 && <Prode data={data} idx={idx} nowK={now.key} nowMs={Date.now()} target={prodeTarget} />}
+          </>
+        )}
 
         {/* fastext: info (AGENDA · TABLA) a la izquierda; acciones (PRODE · EN VIVO)
             a la derecha, separadas por un hueco */}
         <div className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-6xl px-2" style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))", paddingTop: "0.25rem", background: "#000" }}>
           <div className="tt-fast">
             {PAGES.map(({ p, label, cls }) => (
-              <button key={p} className={`tt-btn ${cls}${page === p && !watch ? " on" : ""}`} onClick={() => setPage(p)}>{label} {p}</button>
+              <button key={p} className={`tt-btn ${cls}${page === p && !watch && !team ? " on" : ""}`} onClick={() => setPage(p)}>{label} {p}</button>
             ))}
             <button className={`tt-btn f-c${watch ? " on" : ""}`} onClick={goLive}>EN VIVO 500</button>
           </div>

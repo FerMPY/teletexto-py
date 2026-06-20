@@ -95,7 +95,7 @@ export function Viewer({ match, ch, idx, nowK, onSwitch, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: "#000" }}>
-      <div className="mx-auto w-[min(1500px,97vw)] py-2">
+      <div className="mx-auto py-2" style={{ width: "min(1500px, 97vw)" }}>
         {/* barra superior */}
         <div className="tt-row mb-1">
           <button className="tt-btn" style={{ color: C.r }} onClick={onClose}>◄ VOLVER</button>

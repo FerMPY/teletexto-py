@@ -6,20 +6,21 @@ import { CH_ORDER, CHANNELS, kickoffEpoch } from "../shared/mundial";
 import type { ChannelKey, Match, StandingGroup } from "../shared/mundial";
 import { Albirroja } from "./albirroja";
 import { downloadIcs } from "./ics";
-import { C, Live, Sep, TitleBar } from "./teletext";
+import { C, Live, Sep, TeamLink, TitleBar } from "./teletext";
 import { chOf, countdown, dayLabel, goalsFor, liveMatches, matchState, mKey, nextMatch, nextPy, scoreStr } from "./state";
 import type { Indexes } from "./state";
 
 type Watch = (m: Match, ch: ChannelKey) => void;
+type TeamNav = (name: string) => void;
 
 const FILTERS: [string, string][] = [
-  ["all", "TODOS"], ["live", "EN VIVO"], ["today", "HOY"], ["py", "ALBIRROJA"],
+  ["next", "PRÓXIMOS"], ["all", "TODOS"], ["live", "EN VIVO"], ["today", "HOY"], ["py", "ALBIRROJA"],
   ["f1", "FECHA 1"], ["f2", "FECHA 2"], ["f3", "FECHA 3"],
 ];
 
 // la grilla a veces miente (Corea-Chequia: decía gen+trece, salió por popu+uni)
 // → SIEMPRE los 5 canales: los de la grilla con su color, el resto apagados
-function ChannelBtns({ m, onWatch }: { m: Match; onWatch: Watch }) {
+export function ChannelBtns({ m, onWatch }: { m: Match; onWatch: Watch }) {
   const grilla = chOf(m);
   return (
     <span className="inline-flex gap-1 flex-wrap">
@@ -41,7 +42,7 @@ function ChannelBtns({ m, onWatch }: { m: Match; onWatch: Watch }) {
   );
 }
 
-function Row({ m, idx, nowK, onWatch, onProde }: { m: Match; idx: Indexes; nowK: string; onWatch: Watch; onProde?: (mk: string) => void }) {
+export function Row({ m, idx, nowK, onWatch, onProde, onTeam }: { m: Match; idx: Indexes; nowK: string; onWatch: Watch; onProde?: (mk: string) => void; onTeam?: TeamNav }) {
   const st = matchState(m, idx, nowK);
   const goals = goalsFor(m, idx);
   const score = scoreStr(st) ?? "vs";
@@ -49,7 +50,7 @@ function Row({ m, idx, nowK, onWatch, onProde }: { m: Match; idx: Indexes; nowK:
     <div className={`tt-row${m.py ? " py" : ""}${st.final && !st.live ? " past" : ""}`}>
       <span style={{ color: C.c }}>{m.t}</span>
       <span style={{ color: C.y }} className="tt-glow">
-        {m.fa} {m.a} <span style={{ color: st.hs != null ? "#fff" : C.dim }}>{score}</span> {m.b} {m.fb}
+        <TeamLink name={m.a} flag={m.fa} onTeam={onTeam} /> <span style={{ color: st.hs != null ? "#fff" : C.dim }}>{score}</span> <TeamLink name={m.b} flag={m.fb} flagAfter onTeam={onTeam} />
       </span>
       {st.live ? <Live min={st.min} /> : st.final && st.hs != null ? <span style={{ color: C.dim }}>FINAL</span> : null}
       <ChannelBtns m={m} onWatch={onWatch} />
@@ -60,7 +61,7 @@ function Row({ m, idx, nowK, onWatch, onProde }: { m: Match; idx: Indexes; nowK:
         <button className="tt-btn" onClick={() => downloadIcs([m], `${m.a} vs ${m.b}`)} title="Agendar este partido en tu calendario (.ics) — con aviso 30 min antes">📅</button>
       )}
       {goals.length > 0 && (
-        <div className="w-full pl-[3.2em]" style={{ color: C.fg, fontSize: ".85em" }}>
+        <div className="w-full" style={{ color: C.fg, fontSize: ".85em", paddingLeft: "3.2em" }}>
           ⚽ {goals.map((e) => `${e.name}${e.pen ? " (P)" : ""}${e.og ? " (EC)" : ""} ${e.min}`).join(", ")}
         </div>
       )}
@@ -68,22 +69,29 @@ function Row({ m, idx, nowK, onWatch, onProde }: { m: Match; idx: Indexes; nowK:
   );
 }
 
-export function Agenda({ idx, nowK, today, onWatch, onProde, usage, standings }: { idx: Indexes; nowK: string; today: string; onWatch: Watch; onProde?: (mk: string) => void; usage?: { served: number; since: number; today?: number; visits?: number }; standings?: StandingGroup[] }) {
-  const [filter, setFilter] = useState("all");
+export function Agenda({ idx, nowK, today, onWatch, onProde, onTeam, usage, standings }: { idx: Indexes; nowK: string; today: string; onWatch: Watch; onProde?: (mk: string) => void; onTeam?: TeamNav; usage?: { served: number; since: number; today?: number; visits?: number }; standings?: StandingGroup[] }) {
+  const [filter, setFilter] = useState("next");
+  const [showPast, setShowPast] = useState(false);
   const live = liveMatches(idx, nowK);
   const next = nextMatch(nowK);
   const py = nextPy(idx, nowK);
   const pyLive = py && matchState(py, idx, nowK).live;
   const cd = py && !pyLive ? countdown(py, nowK) : null;
 
+  // un partido "terminado" = final y ya no en vivo (lo escondemos en PRÓXIMOS)
+  const isPast = (m: Match) => { const st = matchState(m, idx, nowK); return st.final && !st.live; };
+
   const visible = MATCHES.filter((m) => {
     const st = matchState(m, idx, nowK);
+    if (filter === "next") return !isPast(m);          // en vivo + por jugar
     if (filter === "today") return m.d === today;
     if (filter === "py") return !!m.py;
     if (filter === "live") return st.live;
     if (filter.startsWith("f")) return m.f === Number(filter[1]);
     return true;
   });
+  // los terminados, del más reciente al más viejo, para el desplegable de PRÓXIMOS
+  const past = filter === "next" ? MATCHES.filter(isPast).slice().reverse() : [];
 
   let curDay = "";
   return (
@@ -146,16 +154,46 @@ export function Agenda({ idx, nowK, today, onWatch, onProde, usage, standings }:
       </div>
 
       {/* agenda por día */}
-      {visible.length === 0 && <div style={{ color: C.dim }}>SIN PARTIDOS PARA ESTE FILTRO.</div>}
+      {visible.length === 0 && (
+        <div style={{ color: C.dim }}>
+          {filter === "next" ? "NO QUEDAN PARTIDOS POR JUGAR — MIRÁ LOS TERMINADOS ABAJO O TOCÁ TODOS." : "SIN PARTIDOS PARA ESTE FILTRO."}
+        </div>
+      )}
       {visible.map((m) => {
         const head = m.d !== curDay ? ((curDay = m.d), true) : false;
         return (
           <div key={m.d + m.t + m.a}>
             {head && <Sep label={`${dayLabel(m.d)}${m.d === today ? " ◄HOY" : ""}`} />}
-            <Row m={m} idx={idx} nowK={nowK} onWatch={onWatch} onProde={onProde} />
+            <Row m={m} idx={idx} nowK={nowK} onWatch={onWatch} onProde={onProde} onTeam={onTeam} />
           </div>
         );
       })}
+
+      {/* terminados: plegados por defecto en PRÓXIMOS, del más reciente al más viejo */}
+      {past.length > 0 && (
+        <div className="mt-3">
+          <button
+            className="tt-chip" style={{ color: C.dim }}
+            onClick={() => setShowPast((v) => !v)}
+            title="Mostrar / ocultar los partidos que ya se jugaron"
+          >
+            {showPast ? "▾" : "▸"} {past.length} PARTIDOS TERMINADOS
+          </button>
+          {showPast && (
+            <div className="mt-2" style={{ opacity: 0.8 }}>
+              {(() => { let d = ""; return past.map((m) => {
+                const head = m.d !== d ? ((d = m.d), true) : false;
+                return (
+                  <div key={"p" + m.d + m.t + m.a}>
+                    {head && <Sep label={dayLabel(m.d)} />}
+                    <Row m={m} idx={idx} nowK={nowK} onWatch={onWatch} onProde={onProde} onTeam={onTeam} />
+                  </div>
+                );
+              }); })()}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-4" style={{ color: C.dim, fontSize: ".85em" }}>
         LOS CANALES EN COLOR FIGURAN EN LA GRILLA; LOS GRISES NO, PERO LA GRILLA A VECES FALLA — PROBALOS IGUAL.

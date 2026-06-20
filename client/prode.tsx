@@ -104,7 +104,7 @@ export function Prode({ data, idx, nowK, nowMs, target }: { data: ApiData | null
           <>
             <span style={{ color: C.y }}>JUGAS COMO INVITADO ({auth.displayName}).</span>
             <SignInWithGoogle className="tt-btn" />
-            <span style={{ color: C.dim }} className="text-[.85em]">ENTRA CON GOOGLE PARA QUE TU NOMBRE QUEDE EN LA TABLA</span>
+            <span style={{ color: C.dim, fontSize: ".85em" }}>ENTRA CON GOOGLE PARA QUE TU NOMBRE QUEDE EN LA TABLA</span>
           </>
         ) : (
           <>

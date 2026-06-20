@@ -7,8 +7,9 @@ import { useState } from "preact/hooks";
 import { MATCHES } from "../shared/matches";
 import { canon } from "../shared/mundial";
 import type { ApiData, ChannelKey, Match } from "../shared/mundial";
-import { C, Sep, TitleBar } from "./teletext";
+import { C, FormDots, Sep, TeamLink, TitleBar } from "./teletext";
 import { Bracket } from "./bracket";
+import { teamForm } from "./state";
 import type { Indexes } from "./state";
 
 // nombre lindo + bandera de la grilla (FIFA usa otros nombres)
@@ -20,7 +21,7 @@ for (const m of MATCHES) {
 
 const TABS: [string, string][] = [["grupos", "GRUPOS"], ["clasif", "CLASIFICACIÓN"], ["goles", "GOLEADORES"]];
 
-export function Tabla({ data, idx, nowK, onWatch }: { data: ApiData | null; idx: Indexes; nowK: string; onWatch: (m: Match, ch: ChannelKey) => void }) {
+export function Tabla({ data, idx, nowK, onWatch, onTeam }: { data: ApiData | null; idx: Indexes; nowK: string; onWatch: (m: Match, ch: ChannelKey) => void; onTeam?: (name: string) => void }) {
   const [tab, setTab] = useState("grupos");
   const groups = data?.standings || [];
 
@@ -80,7 +81,10 @@ export function Tabla({ data, idx, nowK, onWatch }: { data: ApiData | null; idx:
                       return (
                         <tr key={r.team} style={{ color: q ? C.g : C.y }}>
                           <td>{r.pos}</td>
-                          <td className="tt-glow">{flagBy[c] || "🏳"} {nameBy[c] || r.team}</td>
+                          <td className="tt-glow">
+                            <TeamLink name={nameBy[c] || r.team} flag={flagBy[c] || "🏳"} onTeam={onTeam} />
+                            {" "}<FormDots form={teamForm(c, idx, nowK)} />
+                          </td>
                           <td className="text-right">{r.pj}</td>
                           <td className="text-right">{r.gd > 0 ? `+${r.gd}` : r.gd}</td>
                           <td className="text-right" style={{ color: "#fff" }}>{r.pts}</td>
