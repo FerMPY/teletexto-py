@@ -9,6 +9,7 @@ import { canon } from "../shared/mundial";
 import type { ApiData, ChannelKey, Match } from "../shared/mundial";
 import { C, FormDots, Sep, TeamLink, TitleBar } from "./teletext";
 import { Bracket } from "./bracket";
+import { LiveScenarios } from "./scenarios";
 import { teamForm } from "./state";
 import type { Indexes } from "./state";
 
@@ -56,6 +57,8 @@ export function Tabla({ data, idx, nowK, onWatch, onTeam }: { data: ApiData | nu
       {/* GRUPOS */}
       {tab === "grupos" && (
         <div>
+          {/* SI TERMINA ASÍ: proyección en vivo arriba de la tabla oficial */}
+          <LiveScenarios standings={groups} idx={idx} nowK={nowK} onTeam={onTeam} />
           {groups.length === 0 && (
             <div style={{ color: C.dim }}>{data ? "SIN DATOS DE LA TABLA TODAVIA." : "CARGANDO TABLA..."}</div>
           )}

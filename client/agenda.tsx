@@ -5,6 +5,7 @@ import { MATCHES } from "../shared/matches";
 import { CH_ORDER, CHANNELS, kickoffEpoch } from "../shared/mundial";
 import type { ChannelKey, Match, StandingGroup } from "../shared/mundial";
 import { Albirroja } from "./albirroja";
+import { LiveScenarios } from "./scenarios";
 import { downloadIcs } from "./ics";
 import { C, Live, Sep, TeamLink, TitleBar } from "./teletext";
 import { chOf, countdown, dayLabel, goalsFor, liveMatches, matchState, mKey, nextMatch, nextPy, scoreStr } from "./state";
@@ -137,6 +138,10 @@ export function Agenda({ idx, nowK, today, onWatch, onProde, onTeam, usage, stan
           <ChannelBtns m={py} onWatch={onWatch} />
         </div>
       )}
+
+      {/* SI TERMINA ASÍ: proyección en vivo de quién clasifica (solo con partidos
+          de grupo en curso) — el momento teletexto de la última fecha */}
+      <LiveScenarios standings={standings} idx={idx} nowK={nowK} onTeam={onTeam} />
 
       {/* escenarios de clasificación de Paraguay */}
       <Albirroja idx={idx} nowK={nowK} standings={standings} />

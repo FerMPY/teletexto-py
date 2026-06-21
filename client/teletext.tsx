@@ -170,10 +170,13 @@ export function Sep({ color = C.c, label }: { color?: string; label?: string }) 
   );
 }
 
+// Indicador EN VIVO ESTÁTICO (no parpadea): la regla es UN solo elemento
+// parpadeante de "en vivo" en pantalla, y ese es la cinta de arriba (ticker.tsx,
+// .tt-ticker-tag .tt-blink). Acá, en cada partido/fila, el ● va fijo.
 export function Live({ min }: { min?: string | null }) {
   return (
     <span style={{ color: C.g }} className="tt-glow">
-      <span className="tt-blink">●</span> EN VIVO{min ? ` ${min}` : ""}
+      ● EN VIVO{min ? ` ${min}` : ""}
     </span>
   );
 }
