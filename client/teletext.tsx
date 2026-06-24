@@ -133,6 +133,46 @@ html,body{background:var(--tt-bg);}
 .tt-set .tt-chip.on{border-color:currentColor}
 @media (max-width:640px){ .tt-row{gap:.35em} .tt-fast .tt-btn{min-width:5em} .tt-ticker-tag{font-size:.78em} }
 
+/* ---- cuadro de eliminatorias (bracket) ---- */
+.brk{ display:flex; align-items:stretch; overflow-x:auto; padding-bottom:1em; }
+.brk-col{ display:flex; flex-direction:column; min-width:13.5em; flex:0 0 auto; }
+.brk-col:not(:first-child){ padding-left:1.5em; }
+.brk-col-h{ color:var(--tt-m); white-space:nowrap; margin-bottom:.35em; letter-spacing:.04em; }
+.brk-ties{ display:flex; flex-direction:column; flex:1 1 auto; }
+.brk-tie{ flex:1 1 0; display:flex; align-items:center; position:relative; }
+.brk-card{ width:100%; border:1px solid #242424; background:#070707; padding:.18em .4em; margin:.18em 0; }
+.brk-card.py{ background:linear-gradient(90deg, rgba(255,64,64,.20), rgba(20,20,200,.20)); border-color:rgba(255,64,64,.5) }
+.brk-card.live{ border-color:var(--tt-g); box-shadow:0 0 8px rgba(61,220,61,.35) }
+.brk-meta{ display:flex; gap:.5em; align-items:baseline; font-size:.72em }
+.brk-side{ display:flex; gap:.4em; align-items:baseline; justify-content:space-between; white-space:nowrap }
+.brk-side.win .brk-team{ font-weight:bold }
+.brk-team{ overflow:hidden; text-overflow:ellipsis }
+.brk-score{ flex:none }
+.brk-pen{ font-size:.7em }
+.brk-ver{ font-size:.72em; margin-top:.15em }
+.brk-loose .brk-tie{ flex:none }
+/* conectores: cada llave (salvo la 1ª columna) dibuja el "]" que junta a sus dos
+   alimentadores + un cachito al centro hacia su caja. Las columnas miden lo mismo
+   y reparten las llaves con flex:1, así el "]" cae justo en los centros de la
+   columna anterior (25% y 75% de la llave actual). */
+.brk-col:not(:first-child) .brk-tie::before{
+  content:""; position:absolute; right:100%; margin-right:.75em; top:25%; height:50%; width:.75em;
+  border:1px solid var(--tt-dim); border-left:0;
+}
+.brk-col:not(:first-child) .brk-tie::after{
+  content:""; position:absolute; right:100%; top:50%; width:.75em; border-top:1px solid var(--tt-dim);
+}
+@media (max-width:640px){ .brk-col{ min-width:11.5em } .brk-col:not(:first-child){ padding-left:1.1em } }
+
+/* ---- aviso "qué hay de nuevo" (banda + chip NUEVO) ---- */
+.tt-news{ display:flex; align-items:center; gap:.55em; flex-wrap:wrap; margin:.4em 0; padding:.2em .55em;
+  background:linear-gradient(90deg, rgba(240,109,240,.20), rgba(20,20,200,.10)); border:1px solid var(--tt-m); }
+.tt-news-tag{ color:var(--tt-m); font-weight:bold; letter-spacing:.06em; white-space:nowrap }
+.tt-news-txt{ color:var(--tt-y); flex:1 1 16em; min-width:0 }
+.tt-news-x{ color:var(--tt-dim); padding:0 .4em }
+.tt-new{ display:inline-block; background:var(--tt-m); color:#000; font-size:.62em; padding:0 .35em;
+  margin-left:.4em; letter-spacing:.06em; vertical-align:.15em }
+
 /* ---- pantalla de carga (boot): tapa el contenido hasta que Tailwind (que viene
    del CDN, asíncrono) ya aplicó, así no se ve el "salto" de layout sin estilos.
    Usa SOLO CSS propio (carga con la app, antes que el CDN), nunca clases de

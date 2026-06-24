@@ -1,126 +1,209 @@
-// CLASIFICACIÓN / LLAVES (sub-pestaña de P200 TABLA): el cuadro de eliminatorias.
-// Mientras FIFA no publique los
-// cruces (se definen al cerrar la fase de grupos, ~28 JUN), mostramos el cuadro
-// vacío como guía + QUIÉNES CLASIFICARÍAN hoy (1º y 2º de cada grupo + los 8
-// mejores terceros). Cuando se agreguen los partidos de eliminatorias a
-// matches.ts (f >= 4), esta página los dibuja como llaves automáticamente.
+// CLASIFICACIÓN / LLAVES (sub-pestaña de P200 TABLA): el CUADRO de eliminatorias
+// de verdad — un árbol Dieciseisavos → Octavos → Cuartos → Semis → Final, con el
+// 3er puesto aparte.
+//
+// El esqueleto (qué slot juega con qué slot) es fijo y vive en shared/bracket.ts.
+// Acá lo LLENAMOS con la tabla en vivo de FIFA (data.standings):
+//   · 1º y 2º de cada grupo → entran a su slot apenas se definen. Si el grupo
+//     todavía no terminó, el equipo va PROVISORIO (marcado con " ·").
+//   · Los 8 mejores terceros NO se slotean de antemano (dependen de la tabla de
+//     combinaciones de FIFA, Anexo C). Esos slots quedan como "3º (C/E/F/H/I)" y
+//     los terceros que hoy entrarían se listan en una bolsa abajo.
+//   · Rondas siguientes: "GANADOR 73", etc., hasta que haya resultado.
+//
+// Cuando se carguen los partidos de eliminatorias a matches.ts (f>=4), cada llave
+// con sus dos equipos ya definidos muestra fecha/marcador/EN VIVO/VER y propaga
+// el ganador a la ronda siguiente — el cuadro se completa solo.
 import { MATCHES } from "../shared/matches";
-import { canon } from "../shared/mundial";
-import type { ApiData, ChannelKey, Match, StandingGroup } from "../shared/mundial";
+import { canon, pk } from "../shared/mundial";
+import type { ApiData, ChannelKey, Match, StandingRow } from "../shared/mundial";
+import { BRACKET, COLUMNS, ROUND, roundOrder } from "../shared/bracket";
+import type { Slot } from "../shared/bracket";
 import { C, Live, Sep, TitleBar } from "./teletext";
-import { chOf, dayLabel, matchState, scoreStr } from "./state";
-import type { Indexes } from "./state";
+import { chOf, dayLabel, matchState } from "./state";
+import type { Indexes, MState } from "./state";
 
-// nombre lindo + bandera de la grilla (FIFA usa otros nombres)
+// nombre lindo + bandera de la grilla (FIFA usa otros nombres; canon() los une)
 const flagBy: Record<string, string> = {}, nameBy: Record<string, string> = {};
 for (const m of MATCHES) {
   flagBy[canon(m.a)] = m.fa; flagBy[canon(m.b)] = m.fb;
   nameBy[canon(m.a)] = m.a; nameBy[canon(m.b)] = m.b;
 }
 const team = (t: string) => `${flagBy[canon(t)] || "🏳"} ${nameBy[canon(t)] || t}`;
+// "Grupo A" / "Group A" / "A" → "A"
+const groupLetter = (name: string) => name.trim().toUpperCase().match(/([A-L])\s*$/)?.[1] || null;
 
-// f del torneo → nombre de la ronda (48 equipos: la 1ª eliminatoria son 32)
-const ROUND: Record<number, string> = { 4: "DIECISÉISAVOS", 5: "OCTAVOS", 6: "CUARTOS", 7: "SEMIFINALES", 8: "FINAL", 9: "TERCER PUESTO" };
-const roundName = (f: number) => ROUND[f] || `FASE ${f}`;
-
-function KnockoutMatch({ m, idx, nowK, onWatch }: { m: Match; idx: Indexes; nowK: string; onWatch: (m: Match, ch: ChannelKey) => void }) {
-  const st = matchState(m, idx, nowK);
-  const pyHere = !!m.py;
-  return (
-    <div className={`tt-row${pyHere ? " py" : ""}`} style={{ minWidth: "18em" }}>
-      <span style={{ color: C.c }}>{dayLabel(m.d)} {m.t}</span>
-      <span style={{ color: C.y }} className="tt-glow w-full">
-        {team(m.a)} <span style={{ color: st.hs != null ? "#fff" : C.dim }}>{scoreStr(st) ?? "vs"}</span> {team(m.b)}
-      </span>
-      {st.live ? <Live min={st.min} /> : st.final && st.hs != null ? <span style={{ color: C.dim }}>FINAL</span> : null}
-      <button className="tt-btn ch" style={{ color: C.g }} onClick={() => onWatch(m, chOf(m)[0])}>VER</button>
-    </div>
-  );
-}
-
-// lista de un grupo de clasificados (1º / 2º / terceros) con resalte de Paraguay
-function QualList({ label, color, rows }: { label: string; color: string; rows: { team: string; tag: string; out?: boolean }[] }) {
-  return (
-    <div>
-      <Sep color={color} label={label} />
-      {rows.map((r, i) => (
-        <div key={i} className={`tt-row${canon(r.team) === "paraguay" ? " py" : ""}`}>
-          <span style={{ color: r.out ? C.dim : color }} className="tt-glow">{team(r.team)}</span>
-          <span style={{ color: C.dim }}>{r.tag}</span>
-          {r.out && <span style={{ color: C.r }}>AFUERA HOY</span>}
-        </div>
-      ))}
-    </div>
-  );
-}
+// un slot resuelto: o un equipo concreto (provisorio si su grupo no terminó) o un
+// cartel ("1º A", "3º C/E/F/H/I", "GANADOR 73")
+type Resolved = { team: string; prov: boolean } | { label: string };
+const isTeam = (r: Resolved): r is { team: string; prov: boolean } => "team" in r;
 
 export function Bracket({ data, idx, nowK, onWatch, embedded }: { data: ApiData | null; idx: Indexes; nowK: string; onWatch: (m: Match, ch: ChannelKey) => void; embedded?: boolean }) {
-  const ko = MATCHES.filter((m) => m.f >= 4).sort((a, b) => a.f - b.f || `${a.d}T${a.t}`.localeCompare(`${b.d}T${b.t}`));
+  const groups = data?.standings || [];
 
-  // YA HAY ELIMINATORIAS → dibujar las llaves por ronda (columnas)
-  if (ko.length) {
-    const byRound = new Map<number, Match[]>();
-    for (const m of ko) (byRound.get(m.f) ?? byRound.set(m.f, []).get(m.f)!).push(m);
-    return (
-      <div>
-        {!embedded && <TitleBar color={C.m}>LLAVES — RONDA FINAL</TitleBar>}
-        <div className="flex gap-6 overflow-x-auto pb-4">
-          {[...byRound.entries()].map(([f, ms]) => (
-            <div key={f} className="flex-none">
-              <Sep color={C.m} label={roundName(f)} />
-              {ms.map((m) => <KnockoutMatch key={m.d + m.t + m.a} m={m} idx={idx} nowK={nowK} onWatch={onWatch} />)}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+  // índice de grupos por letra: filas ordenadas + si ya terminó (todos jugaron 3)
+  const gIndex = new Map<string, { rows: StandingRow[]; final: boolean; started: boolean }>();
+  for (const g of groups) {
+    const letter = groupLetter(g.group);
+    if (!letter) continue;
+    gIndex.set(letter, {
+      rows: g.rows,
+      started: g.rows.some((r) => r.pj > 0),
+      final: g.rows.length > 0 && g.rows.every((r) => r.pj >= 3),
+    });
+  }
+  const posTeam = (letter: string, pos: number): { team: string; prov: boolean } | null => {
+    const g = gIndex.get(letter);
+    if (!g || !g.started) return null;
+    const r = g.rows.find((x) => x.pos === pos);
+    return r && r.team ? { team: r.team, prov: !g.final } : null;
+  };
+
+  // resolución de slots; winners/losers se van llenando ronda a ronda
+  const winners = new Map<number, string>(), losers = new Map<number, string>();
+  const resolveSlot = (s: Slot): Resolved => {
+    switch (s.k) {
+      case "w": return posTeam(s.g, 1) ?? { label: `1º ${s.g}` };
+      case "r": return posTeam(s.g, 2) ?? { label: `2º ${s.g}` };
+      case "t": return { label: `3º ${s.gs.join("/")}` };
+      case "win": { const t = winners.get(s.m); return t ? { team: t, prov: false } : { label: `GANADOR ${s.m}` }; }
+      case "lose": { const t = losers.get(s.m); return t ? { team: t, prov: false } : { label: `PERDEDOR ${s.m}` }; }
+    }
+  };
+  const realMatch = (f: number, a: string, b: string) =>
+    MATCHES.find((m) => m.f === f && pk(m.a, m.b) === pk(a, b)) || null;
+
+  // una pasada por ronda (4→9) para que octavos vea a los ganadores de dieciseisavos
+  type RTie = { a: Resolved; b: Resolved; match: Match | null; st: MState | null; winA: boolean | null };
+  const rmap = new Map<number, RTie>();
+  for (const f of [4, 5, 6, 7, 8, 9]) {
+    for (const tie of BRACKET.filter((t) => t.f === f)) {
+      const a = resolveSlot(tie.a), b = resolveSlot(tie.b);
+      let match: Match | null = null, st: MState | null = null, winA: boolean | null = null;
+      if (isTeam(a) && isTeam(b)) {
+        match = realMatch(tie.f, a.team, b.team);
+        if (match) {
+          st = matchState(match, idx, nowK);
+          if (st.final && st.hs != null) {
+            winA = st.hs > st.as! || (st.hs === st.as && (st.hp ?? 0) > (st.ap ?? 0));
+            winners.set(tie.m, winA ? a.team : b.team);
+            losers.set(tie.m, winA ? b.team : a.team);
+          }
+        }
+      }
+      rmap.set(tie.m, { a, b, match, st, winA });
+    }
   }
 
-  // TODAVÍA NO HAY CRUCES → guía del cuadro + quiénes clasificarían hoy
-  const groups: StandingGroup[] = data?.standings || [];
-  const started = groups.some((g) => g.rows.some((r) => r.pj > 0));
-  const pick = (pos: number) => groups
-    .map((g) => ({ g: g.group, r: g.rows.find((x) => x.pos === pos) }))
-    .filter((x): x is { g: string; r: NonNullable<typeof x.r> } => !!x.r);
-  const winners = pick(1), runners = pick(2);
-  const thirds = pick(3)
-    .filter((x) => x.r.pj > 0)
+  // bolsa de mejores terceros: el 3º de cada grupo que ya jugó, ordenado por la
+  // tabla; entran 8 (lo de FIFA puede variar por desempates finos)
+  const thirds = groups
+    .map((g) => ({ letter: groupLetter(g.group) || "?", r: g.rows.find((x) => x.pos === 3) }))
+    .filter((x): x is { letter: string; r: StandingRow } => !!x.r && x.r.pj > 0)
     .sort((p, q) => q.r.pts - p.r.pts || q.r.gd - p.r.gd || q.r.gf - p.r.gf);
-
-  const STAGES = ["DIECISÉISAVOS (16)", "OCTAVOS (8)", "CUARTOS (4)", "SEMIS (2)", "FINAL"];
+  const anyStarted = gIndex.size > 0 && [...gIndex.values()].some((g) => g.started);
 
   return (
     <div>
-      {!embedded && <TitleBar color={C.m}>LLAVES — RONDA FINAL</TitleBar>}
+      {!embedded && <TitleBar color={C.m}>CUADRO — CAMINO A LA FINAL</TitleBar>}
 
-      {/* cuadro vacío como guía */}
-      <div className="tt-bar tt-glow" style={{ color: "#fff" }}>EL CAMINO A LA FINAL</div>
-      <div className="flex flex-wrap items-center gap-1 my-2" style={{ color: C.dim }}>
-        {STAGES.map((s, i) => (
-          <span key={s}>
-            <span style={{ color: C.c }}>{s}</span>{i < STAGES.length - 1 && <span style={{ color: C.dim }}>{"  ►  "}</span>}
-          </span>
+      <div style={{ color: C.y }} className="mb-1 tt-glow">EL CAMINO A LA FINAL</div>
+      <div style={{ color: C.dim, fontSize: ".85em" }} className="mb-3">
+        EL ESQUELETO ES FIJO. LOS 1º Y 2º ENTRAN APENAS SE DEFINE EL GRUPO
+        (<span style={{ color: C.fg }}>· = PROVISORIO, EL GRUPO SIGUE ABIERTO</span>).
+        LOS 8 MEJORES TERCEROS VAN A SUS SLOTS CUANDO FIFA CIERRE LA FASE DE GRUPOS (≈28 JUN).
+      </div>
+
+      {/* EL CUADRO */}
+      <div className="brk">
+        {COLUMNS.map((f) => (
+          <div className="brk-col" key={f}>
+            <div className="brk-col-h tt-glow">{ROUND[f]}</div>
+            <div className="brk-ties">
+              {roundOrder(f).map((tie) => (
+                <TieCard key={tie.m} m={tie.m} rt={rmap.get(tie.m)!} onWatch={onWatch} />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
-      <div style={{ color: C.y }} className="mb-4">
-        EL CUADRO SE DEFINE AL TERMINAR LA FASE DE GRUPOS (≈28 JUN). MIENTRAS TANTO,
-        ASÍ ESTARÍAN LOS CLASIFICADOS SI LA FASE CERRARA HOY:
-      </div>
 
-      {!started ? (
-        <div style={{ color: C.dim }}>{data ? "TODAVIA NO ARRANCO LA FASE DE GRUPOS." : "CARGANDO..."}</div>
-      ) : (
-        <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
-          <QualList label="1º DE GRUPO" color={C.g} rows={winners.map((x) => ({ team: x.r.team, tag: x.g }))} />
-          <QualList label="2º DE GRUPO" color={C.g} rows={runners.map((x) => ({ team: x.r.team, tag: x.g }))} />
-          <QualList label="MEJORES TERCEROS — PASAN 8" color={C.c} rows={thirds.map((x, i) => ({ team: x.r.team, tag: `${x.g} · ${x.r.pts} PTS`, out: i >= 8 }))} />
+      {/* TERCER PUESTO (cuelga de los perdedores de semis, va aparte del árbol) */}
+      <div className="mt-4" style={{ maxWidth: "20em" }}>
+        <Sep color={C.dim} label="TERCER PUESTO" />
+        <div className="brk-loose">
+          <TieCard m={103} rt={rmap.get(103)!} onWatch={onWatch} />
         </div>
-      )}
-
-      <div className="mt-4" style={{ color: C.dim, fontSize: ".85em" }}>
-        CLASIFICAN LOS 2 PRIMEROS DE CADA GRUPO + LOS 8 MEJORES TERCEROS (32 EQUIPOS).
-        ESTO ES PROVISORIO: CAMBIA CON CADA RESULTADO HASTA EL CIERRE DE LA FASE DE GRUPOS.
       </div>
+
+      {/* BOLSA DE TERCEROS */}
+      <div className="mt-5">
+        <Sep color={C.c} label="MEJORES TERCEROS — ENTRAN 8" />
+        {!anyStarted ? (
+          <div style={{ color: C.dim }}>{data ? "TODAVÍA NO ARRANCÓ LA FASE DE GRUPOS." : "CARGANDO TABLA..."}</div>
+        ) : (
+          <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2 xl:grid-cols-4">
+            {thirds.map((x, i) => {
+              const c = canon(x.r.team), out = i >= 8;
+              return (
+                <div key={x.r.team} className={`tt-row${c === "paraguay" ? " py" : ""}`} style={{ minWidth: 0 }}>
+                  <span style={{ color: C.dim }} className="w-5">{i + 1}</span>
+                  <span style={{ color: out ? C.dim : C.c }} className="tt-glow">{team(x.r.team)}</span>
+                  <span style={{ color: C.dim }}>{x.letter} · {x.r.pts} PTS</span>
+                  {out && <span style={{ color: C.r }}>AFUERA HOY</span>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="mt-2" style={{ color: C.dim, fontSize: ".8em" }}>
+          CLASIFICAN LOS 2 PRIMEROS DE CADA GRUPO + LOS 8 MEJORES TERCEROS (32 EQUIPOS).
+          PROVISORIO: CAMBIA CON CADA RESULTADO HASTA EL CIERRE DE LA FASE DE GRUPOS.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// una llave del cuadro: caja con dos lados. Si ya hay partido real (matches.ts con
+// f>=4) muestra fecha/marcador/EN VIVO/VER; si no, los carteles del esqueleto.
+function TieCard({ m, rt, onWatch }: { m: number; rt: RTie; onWatch: (m: Match, ch: ChannelKey) => void }) {
+  const { a, b, match, st, winA } = rt;
+  const py = (isTeam(a) && canon(a.team) === "paraguay") || (isTeam(b) && canon(b.team) === "paraguay");
+  const live = !!st?.live;
+  const final = !!st?.final && st?.hs != null;
+  const chs = match ? chOf(match) : [];
+  return (
+    <div className="brk-tie">
+      <div className={`brk-card${py ? " py" : ""}${live ? " live" : ""}`}>
+        <div className="brk-meta">
+          <span style={{ color: C.dim }}>#{m}</span>
+          {match && <span style={{ color: C.c }}>{dayLabel(match.d)} {match.t}</span>}
+          {live ? <Live min={st?.min} /> : final ? <span style={{ color: C.dim }}>FINAL</span> : null}
+        </div>
+        <Side res={a} score={st?.hs ?? null} win={winA === true} />
+        <Side res={b} score={st?.as ?? null} win={winA === false} />
+        {st?.hp != null && (
+          <div className="brk-pen" style={{ color: C.dim }}>PENALES {st.hp}-{st.ap}</div>
+        )}
+        {chs.length > 0 && match && (
+          <button className="tt-btn ch brk-ver" style={{ color: C.g }} onClick={() => onWatch(match, chs[0])}>VER</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Side({ res, score, win }: { res: Resolved; score: number | null; win: boolean }) {
+  const known = isTeam(res);
+  const prov = known && res.prov;
+  const col = win ? "#fff" : known ? (prov ? C.fg : C.y) : C.dim;
+  return (
+    <div className={`brk-side${win ? " win" : ""}`}>
+      <span className="brk-team tt-glow" style={{ color: col }}>
+        {known ? team(res.team) : res.label}{prov ? " ·" : ""}
+      </span>
+      {score != null && <span className="brk-score" style={{ color: "#fff" }}>{score}</span>}
     </div>
   );
 }

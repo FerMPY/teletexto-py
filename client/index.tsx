@@ -15,6 +15,7 @@ import { TeamPage } from "./team";
 import { Viewer } from "./viewer";
 import { buildIndexes, chOf, liveMatches, matchState, mKey, scoreStr, useClock, useGoalToasts } from "./state";
 import { PrefsProvider, usePrefs } from "./prefs";
+import { SeenProvider, NewsFlash } from "./news";
 import { Settings } from "./settings";
 import { Ticker } from "./ticker";
 import { goalBeep, notifyGoal, unlockAudio } from "./alerts";
@@ -40,24 +41,24 @@ const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/gi, "-");
 const matchBySlug = (s: string) => MATCHES.find((x) => slugify(pk(x.a, x.b)) === s) || null;
 // nombre de equipo ↔ slug (#700-<equipo>): la trayectoria de una selección
 const teamBySlug = (s: string) => { for (const m of MATCHES) { if (slugify(m.a) === s) return m.a; if (slugify(m.b) === s) return m.b; } return null; };
-type Nav = { page: Page; watch: { m: Match | null; ch: ChannelKey } | null; target: string | null; team: string | null };
+type Nav = { page: Page; watch: { m: Match | null; ch: ChannelKey } | null; target: string | null; team: string | null; tab: string | null };
 function parseHash(): Nav {
   const h = decodeURIComponent(location.hash.slice(1));
   const v = h.match(/^500-([a-z]+)(?:-(.+))?$/i);
   if (v && CH_ORDER.includes(v[1] as ChannelKey)) {
-    return { page: 100, watch: { m: v[2] ? matchBySlug(v[2]) : null, ch: v[1] as ChannelKey }, target: null, team: null };
+    return { page: 100, watch: { m: v[2] ? matchBySlug(v[2]) : null, ch: v[1] as ChannelKey }, target: null, team: null, tab: null };
   }
   const tm = h.match(/^700-(.+)$/);
-  if (tm) return { page: 100, watch: null, target: null, team: teamBySlug(tm[1]) };
+  if (tm) return { page: 100, watch: null, target: null, team: teamBySlug(tm[1]), tab: null };
   const p = h.match(/^([123])00(?:-(.+))?$/);
   const page = (p ? Number(p[1]) * 100 : 100) as Page;
   const target = page === 300 && p?.[2] ? (matchBySlug(p[2]) ? pk(matchBySlug(p[2])!.a, matchBySlug(p[2])!.b) : null) : null;
-  return { page, watch: null, target, team: null };
+  return { page, watch: null, target, team: null, tab: page === 200 ? (p?.[2] ?? null) : null };
 }
 
 // raíz: provee las preferencias (modo CRT/paleta/guaraní/avisos) a todo el árbol
 export function App() {
-  return <PrefsProvider><AppInner /></PrefsProvider>;
+  return <PrefsProvider><SeenProvider><AppInner /></SeenProvider></PrefsProvider>;
 }
 
 function AppInner() {
@@ -187,6 +188,7 @@ function AppInner() {
   const [watch, setWatchRaw] = useState<{ m: Match | null; ch: ChannelKey } | null>(init.watch);
   const [team, setTeamRaw] = useState<string | null>(init.team); // trayectoria abierta (P700)
   const [prodeTarget, setProdeTarget] = useState<string | null>(init.target); // partido al que saltar en P300
+  const [tablaTab, setTablaTab] = useState<string | null>(init.tab); // sub-pestaña de TABLA por deep link (#200-clasif)
   const [buf, setBuf] = useState(""); // dígitos tipeados (navegación por número de página)
   const [flash, setFlash] = useState("");
 
@@ -194,7 +196,7 @@ function AppInner() {
   useEffect(() => {
     const onPop = () => {
       const s = parseHash();
-      setPageRaw(s.page); setWatchRaw(s.watch); setTeamRaw(s.team);
+      setPageRaw(s.page); setWatchRaw(s.watch); setTeamRaw(s.team); setTablaTab(s.tab);
       if (s.target) setProdeTarget(s.target);
     };
     window.addEventListener("popstate", onPop);
@@ -204,6 +206,7 @@ function AppInner() {
   // navegar a una página cierra el visor y la trayectoria (como tipear un número)
   const setPage = (p: Page, suffix?: string) => {
     setWatchRaw(null); setTeamRaw(null); setPageRaw(p);
+    if (p === 200) setTablaTab(suffix === "clasif" ? "clasif" : null);
     history.replaceState(null, "", `#${p}${suffix ? `-${suffix}` : ""}`);
   };
   // abrir la trayectoria de un equipo agrega UNA entrada de historial (atrás vuelve)
@@ -290,6 +293,7 @@ function AppInner() {
         {/* preferencias (modo) + cinta de partidos en vivo */}
         <Settings />
         <Ticker idx={idx} nowK={now.key} onWatch={(m) => openWatch(m, chOf(m)[0])} />
+        <NewsFlash onGo={() => setPage(200, "clasif")} />
 
         {flash && (
           <div className="tt-flash">
@@ -313,7 +317,7 @@ function AppInner() {
         ) : (
           <>
             {page === 100 && <Agenda idx={idx} nowK={now.key} today={now.date} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} onTeam={openTeam} standings={data?.standings} />}
-            {page === 200 && <Tabla data={data} idx={idx} nowK={now.key} onWatch={openWatch} onTeam={openTeam} />}
+            {page === 200 && <Tabla data={data} idx={idx} nowK={now.key} onWatch={openWatch} onTeam={openTeam} goTab={tablaTab} />}
             {page === 300 && <Prode data={data} idx={idx} nowK={now.key} nowMs={Date.now()} target={prodeTarget} />}
           </>
         )}

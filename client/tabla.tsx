@@ -3,12 +3,13 @@
 //  · CLASIFICACIÓN quiénes pasan (1º/2º + 8 mejores terceros) y el camino a la
 //                  final — cuando FIFA publique los cruces, las llaves de verdad
 //  · GOLEADORES    los goleadores del torneo
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { MATCHES } from "../shared/matches";
 import { canon } from "../shared/mundial";
 import type { ApiData, ChannelKey, Match } from "../shared/mundial";
 import { C, FormDots, Sep, TeamLink, TitleBar } from "./teletext";
 import { Bracket } from "./bracket";
+import { Nuevo, useSeen } from "./news";
 import { LiveScenarios } from "./scenarios";
 import { teamForm } from "./state";
 import type { Indexes } from "./state";
@@ -22,8 +23,13 @@ for (const m of MATCHES) {
 
 const TABS: [string, string][] = [["grupos", "GRUPOS"], ["clasif", "CLASIFICACIÓN"], ["goles", "GOLEADORES"]];
 
-export function Tabla({ data, idx, nowK, onWatch, onTeam }: { data: ApiData | null; idx: Indexes; nowK: string; onWatch: (m: Match, ch: ChannelKey) => void; onTeam?: (name: string) => void }) {
-  const [tab, setTab] = useState("grupos");
+export function Tabla({ data, idx, nowK, onWatch, onTeam, goTab }: { data: ApiData | null; idx: Indexes; nowK: string; onWatch: (m: Match, ch: ChannelKey) => void; onTeam?: (name: string) => void; goTab?: string | null }) {
+  const { markSeen } = useSeen();
+  const [tab, setTab] = useState(goTab || "grupos");
+  // deep link (#200-clasif) o "VER" del aviso → abrir la sub-pestaña pedida
+  useEffect(() => { if (goTab) setTab(goTab); }, [goTab]);
+  // ver el cuadro (por deep link o tocando el chip) marca el aviso como visto
+  useEffect(() => { if (tab === "clasif") markSeen("cuadro-2026"); }, [tab]);
   const groups = data?.standings || [];
 
   // goleadores: agregado en el cliente de los goles que ya vienen en /api/data
@@ -50,7 +56,7 @@ export function Tabla({ data, idx, nowK, onWatch, onTeam }: { data: ApiData | nu
       {/* sub-pestañas */}
       <div className="flex gap-3 flex-wrap mb-3 items-baseline" style={{ color: C.c }}>
         {TABS.map(([k, label]) => (
-          <button key={k} className={`tt-chip${tab === k ? " on" : ""}`} onClick={() => setTab(k)}>{label}</button>
+          <button key={k} className={`tt-chip${tab === k ? " on" : ""}`} onClick={() => setTab(k)}>{label}{k === "clasif" && <Nuevo id="cuadro-2026" />}</button>
         ))}
       </div>
 
