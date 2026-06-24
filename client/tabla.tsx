@@ -113,7 +113,7 @@ export function Tabla({ data, idx, nowK, onWatch, onTeam, goTab }: { data: ApiDa
       )}
 
       {/* CLASIFICACIÓN / LLAVES */}
-      {tab === "clasif" && <Bracket data={data} idx={idx} nowK={nowK} onWatch={onWatch} embedded />}
+      {tab === "clasif" && <Bracket data={data} idx={idx} nowK={nowK} onWatch={onWatch} onTeam={onTeam} embedded />}
 
       {/* GOLEADORES */}
       {tab === "goles" && (

@@ -19,7 +19,7 @@ import { canon, pk } from "../shared/mundial";
 import type { ApiData, ChannelKey, Match, StandingRow } from "../shared/mundial";
 import { BRACKET, COLUMNS, ROUND, roundOrder } from "../shared/bracket";
 import type { Slot } from "../shared/bracket";
-import { C, Live, Sep, TitleBar } from "./teletext";
+import { C, Live, Sep, TeamLink, TitleBar } from "./teletext";
 import { chOf, dayLabel, matchState } from "./state";
 import type { Indexes, MState } from "./state";
 
@@ -29,7 +29,8 @@ for (const m of MATCHES) {
   flagBy[canon(m.a)] = m.fa; flagBy[canon(m.b)] = m.fb;
   nameBy[canon(m.a)] = m.a; nameBy[canon(m.b)] = m.b;
 }
-const team = (t: string) => `${flagBy[canon(t)] || "🏳"} ${nameBy[canon(t)] || t}`;
+const nm = (t: string) => nameBy[canon(t)] || t;
+const fl = (t: string) => flagBy[canon(t)] || "🏳";
 // "Grupo A" / "Group A" / "A" → "A"
 const groupLetter = (name: string) => name.trim().toUpperCase().match(/([A-L])\s*$/)?.[1] || null;
 
@@ -38,7 +39,7 @@ const groupLetter = (name: string) => name.trim().toUpperCase().match(/([A-L])\s
 type Resolved = { team: string; prov: boolean } | { label: string };
 const isTeam = (r: Resolved): r is { team: string; prov: boolean } => "team" in r;
 
-export function Bracket({ data, idx, nowK, onWatch, embedded }: { data: ApiData | null; idx: Indexes; nowK: string; onWatch: (m: Match, ch: ChannelKey) => void; embedded?: boolean }) {
+export function Bracket({ data, idx, nowK, onWatch, embedded, onTeam }: { data: ApiData | null; idx: Indexes; nowK: string; onWatch: (m: Match, ch: ChannelKey) => void; embedded?: boolean; onTeam?: (name: string) => void }) {
   const groups = data?.standings || [];
 
   // índice de grupos por letra: filas ordenadas + si ya terminó (todos jugaron 3)
@@ -121,7 +122,7 @@ export function Bracket({ data, idx, nowK, onWatch, embedded }: { data: ApiData 
             <div className="brk-col-h tt-glow">{ROUND[f]}</div>
             <div className="brk-ties">
               {roundOrder(f).map((tie) => (
-                <TieCard key={tie.m} m={tie.m} rt={rmap.get(tie.m)!} onWatch={onWatch} />
+                <TieCard key={tie.m} m={tie.m} rt={rmap.get(tie.m)!} onWatch={onWatch} onTeam={onTeam} />
               ))}
             </div>
           </div>
@@ -132,7 +133,7 @@ export function Bracket({ data, idx, nowK, onWatch, embedded }: { data: ApiData 
       <div className="mt-4" style={{ maxWidth: "20em" }}>
         <Sep color={C.dim} label="TERCER PUESTO" />
         <div className="brk-loose">
-          <TieCard m={103} rt={rmap.get(103)!} onWatch={onWatch} />
+          <TieCard m={103} rt={rmap.get(103)!} onWatch={onWatch} onTeam={onTeam} />
         </div>
       </div>
 
@@ -148,7 +149,7 @@ export function Bracket({ data, idx, nowK, onWatch, embedded }: { data: ApiData 
               return (
                 <div key={x.r.team} className={`tt-row${c === "paraguay" ? " py" : ""}`} style={{ minWidth: 0 }}>
                   <span style={{ color: C.dim }} className="w-5">{i + 1}</span>
-                  <span style={{ color: out ? C.dim : C.c }} className="tt-glow">{team(x.r.team)}</span>
+                  <span className="tt-glow"><TeamLink name={nm(x.r.team)} flag={fl(x.r.team)} color={out ? C.dim : C.c} onTeam={onTeam} /></span>
                   <span style={{ color: C.dim }}>{x.letter} · {x.r.pts} PTS</span>
                   {out && <span style={{ color: C.r }}>AFUERA HOY</span>}
                 </div>
@@ -167,7 +168,7 @@ export function Bracket({ data, idx, nowK, onWatch, embedded }: { data: ApiData 
 
 // una llave del cuadro: caja con dos lados. Si ya hay partido real (matches.ts con
 // f>=4) muestra fecha/marcador/EN VIVO/VER; si no, los carteles del esqueleto.
-function TieCard({ m, rt, onWatch }: { m: number; rt: RTie; onWatch: (m: Match, ch: ChannelKey) => void }) {
+function TieCard({ m, rt, onWatch, onTeam }: { m: number; rt: RTie; onWatch: (m: Match, ch: ChannelKey) => void; onTeam?: (name: string) => void }) {
   const { a, b, match, st, winA } = rt;
   const py = (isTeam(a) && canon(a.team) === "paraguay") || (isTeam(b) && canon(b.team) === "paraguay");
   const live = !!st?.live;
@@ -181,8 +182,8 @@ function TieCard({ m, rt, onWatch }: { m: number; rt: RTie; onWatch: (m: Match, 
           {match && <span style={{ color: C.c }}>{dayLabel(match.d)} {match.t}</span>}
           {live ? <Live min={st?.min} /> : final ? <span style={{ color: C.dim }}>FINAL</span> : null}
         </div>
-        <Side res={a} score={st?.hs ?? null} win={winA === true} />
-        <Side res={b} score={st?.as ?? null} win={winA === false} />
+        <Side res={a} score={st?.hs ?? null} win={winA === true} onTeam={onTeam} />
+        <Side res={b} score={st?.as ?? null} win={winA === false} onTeam={onTeam} />
         {st?.hp != null && (
           <div className="brk-pen" style={{ color: C.dim }}>PENALES {st.hp}-{st.ap}</div>
         )}
@@ -194,14 +195,17 @@ function TieCard({ m, rt, onWatch }: { m: number; rt: RTie; onWatch: (m: Match, 
   );
 }
 
-function Side({ res, score, win }: { res: Resolved; score: number | null; win: boolean }) {
+function Side({ res, score, win, onTeam }: { res: Resolved; score: number | null; win: boolean; onTeam?: (name: string) => void }) {
   const known = isTeam(res);
   const prov = known && res.prov;
   const col = win ? "#fff" : known ? (prov ? C.fg : C.y) : C.dim;
   return (
     <div className={`brk-side${win ? " win" : ""}`}>
-      <span className="brk-team tt-glow" style={{ color: col }}>
-        {known ? team(res.team) : res.label}{prov ? " ·" : ""}
+      <span className="brk-team tt-glow">
+        {known
+          ? <TeamLink name={nm(res.team)} flag={fl(res.team)} color={col} onTeam={onTeam} />
+          : <span style={{ color: col }}>{res.label}</span>}
+        {prov ? <span style={{ color: col }}> ·</span> : null}
       </span>
       {score != null && <span className="brk-score" style={{ color: "#fff" }}>{score}</span>}
     </div>
