@@ -171,14 +171,16 @@ function AppInner() {
     return () => { alive = false; clearTimeout(start); clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
   }, []);
 
-  // marcador en el título de la pestaña: el resultado se ve aunque estés en
-  // otra ventana (prioridad: el partido de Paraguay)
+  // marcador(es) en el título de la pestaña: se ven aunque estés en otra ventana.
+  // En la última fecha juegan 2 partidos a la vez → los mostramos todos (con
+  // marcador), Paraguay primero.
   useEffect(() => {
-    const live = liveMatches(idx, now.key);
-    const m = live.find((x) => x.py) || live[0];
-    const st = m ? matchState(m, idx, now.key) : null;
-    document.title = m && st && st.hs != null
-      ? `⚽ ${m.fa} ${scoreStr(st)} ${m.fb} · TELETEXTO PY`
+    const live = liveMatches(idx, now.key)
+      .map((m) => ({ m, st: matchState(m, idx, now.key) }))
+      .filter((x) => x.st.hs != null)
+      .sort((a, b) => Number(!!b.m.py) - Number(!!a.m.py));
+    document.title = live.length
+      ? `⚽ ${live.map(({ m, st }) => `${m.fa} ${scoreStr(st)} ${m.fb}`).join(" · ")} · TELETEXTO PY`
       : "MUNDIAL 2026 PY · TELETEXTO";
   }, [idx, now.key]);
 
