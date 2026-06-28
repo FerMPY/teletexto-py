@@ -113,23 +113,26 @@ export const thirdPlace = () => byMatch.get(103)!;
 // sin `ch`, la agenda muestra los 5 canales apagados (como en la fase de grupos).
 export type KoSlot = { d: string; t: string; sede: string; ciudad: string; ch?: string[] };
 export const KO_SCHEDULE: Record<number, KoSlot> = {
-  // DIECISÉISAVOS — 28 jun → 3 jul
-  73: { d: "2026-06-28", t: "16:00", sede: "SoFi Stadium", ciudad: "Los Ángeles", ch: ["gen", "trece"] },
-  76: { d: "2026-06-29", t: "14:00", sede: "NRG Stadium", ciudad: "Houston" },
-  74: { d: "2026-06-29", t: "17:30", sede: "Gillette Stadium", ciudad: "Boston", ch: ["gen", "trece", "popu", "vs"] },
-  75: { d: "2026-06-29", t: "22:00", sede: "Estadio BBVA", ciudad: "Monterrey" },
-  78: { d: "2026-06-30", t: "14:00", sede: "AT&T Stadium", ciudad: "Dallas" },
-  77: { d: "2026-06-30", t: "18:00", sede: "MetLife Stadium", ciudad: "Nueva York" },
-  79: { d: "2026-06-30", t: "22:00", sede: "Estadio Azteca", ciudad: "Ciudad de México" },
-  80: { d: "2026-07-01", t: "13:00", sede: "Mercedes-Benz Stadium", ciudad: "Atlanta" },
-  82: { d: "2026-07-01", t: "17:00", sede: "Lumen Field", ciudad: "Seattle" },
-  81: { d: "2026-07-01", t: "21:00", sede: "Levi's Stadium", ciudad: "San Francisco" },
-  84: { d: "2026-07-02", t: "16:00", sede: "SoFi Stadium", ciudad: "Los Ángeles" },
-  83: { d: "2026-07-02", t: "20:00", sede: "BMO Field", ciudad: "Toronto" },
-  85: { d: "2026-07-03", t: "00:00", sede: "BC Place", ciudad: "Vancouver" },
-  88: { d: "2026-07-03", t: "15:00", sede: "AT&T Stadium", ciudad: "Dallas" },
-  86: { d: "2026-07-03", t: "19:00", sede: "Hard Rock Stadium", ciudad: "Miami" },
-  87: { d: "2026-07-03", t: "22:30", sede: "Arrowhead Stadium", ciudad: "Kansas City" },
+  // DIECISÉISAVOS — 28 jun → 3 jul. Canales de la grilla oficial VS Sports
+  // (post @somosvssports DaI-iTTFZXH, 28/06): cada partido muestra los logos de
+  // los canales que lo dan. La mayoría va por GEN + Trece + Unicanal; #73 y #76
+  // solo por Unicanal; Paraguay (#74) por los cinco.
+  73: { d: "2026-06-28", t: "16:00", sede: "SoFi Stadium", ciudad: "Los Ángeles", ch: ["uni"] },
+  76: { d: "2026-06-29", t: "14:00", sede: "NRG Stadium", ciudad: "Houston", ch: ["uni"] },
+  74: { d: "2026-06-29", t: "17:30", sede: "Gillette Stadium", ciudad: "Boston", ch: ["gen", "trece", "popu", "uni", "vs"] },
+  75: { d: "2026-06-29", t: "22:00", sede: "Estadio BBVA", ciudad: "Monterrey", ch: ["gen", "trece", "uni"] },
+  78: { d: "2026-06-30", t: "14:00", sede: "AT&T Stadium", ciudad: "Dallas", ch: ["gen", "trece", "uni"] },
+  77: { d: "2026-06-30", t: "18:00", sede: "MetLife Stadium", ciudad: "Nueva York", ch: ["gen", "trece", "uni"] },
+  79: { d: "2026-06-30", t: "22:00", sede: "Estadio Azteca", ciudad: "Ciudad de México", ch: ["gen", "trece", "uni"] },
+  80: { d: "2026-07-01", t: "13:00", sede: "Mercedes-Benz Stadium", ciudad: "Atlanta", ch: ["gen", "trece", "uni"] },
+  82: { d: "2026-07-01", t: "17:00", sede: "Lumen Field", ciudad: "Seattle", ch: ["gen", "trece", "uni"] },
+  81: { d: "2026-07-01", t: "21:00", sede: "Levi's Stadium", ciudad: "San Francisco", ch: ["gen", "trece", "uni"] },
+  84: { d: "2026-07-02", t: "16:00", sede: "SoFi Stadium", ciudad: "Los Ángeles", ch: ["gen", "trece", "uni"] },
+  83: { d: "2026-07-02", t: "20:00", sede: "BMO Field", ciudad: "Toronto", ch: ["gen", "trece", "uni"] },
+  85: { d: "2026-07-03", t: "00:00", sede: "BC Place", ciudad: "Vancouver", ch: ["gen", "trece", "uni"] },
+  88: { d: "2026-07-03", t: "15:00", sede: "AT&T Stadium", ciudad: "Dallas", ch: ["gen", "trece", "uni"] },
+  86: { d: "2026-07-03", t: "19:00", sede: "Hard Rock Stadium", ciudad: "Miami", ch: ["gen", "trece", "uni"] },
+  87: { d: "2026-07-03", t: "22:30", sede: "Arrowhead Stadium", ciudad: "Kansas City", ch: ["gen", "trece", "uni"] },
   // OCTAVOS — 4 → 7 jul
   90: { d: "2026-07-04", t: "14:00", sede: "NRG Stadium", ciudad: "Houston" },
   89: { d: "2026-07-04", t: "18:00", sede: "Lincoln Financial Field", ciudad: "Filadelfia" },
@@ -155,10 +158,11 @@ export const KO_SCHEDULE: Record<number, KoSlot> = {
 // ── MEJORES TERCEROS → LLAVE (Anexo C) ─────────────────────────────────────────
 // Los 8 cruces que enfrentan a un "mejor tercero" son 74, 77, 79, 80, 81, 82, 85,
 // 87. Qué grupo cae en cada uno lo define FIFA con la tabla de combinaciones del
-// Anexo C, recién al cerrar la fase de grupos (≈28 jun). Hasta entonces este mapa
-// va VACÍO y esas llaves muestran el cartel "3º (…)". Al cierre se cargan las 8
-// entradas — nº de llave → letra del grupo cuyo 3º entra ahí. Ejemplo de formato:
-//   { 74: "D", 77: "F", 79: "C", 80: "K", 81: "E", 82: "A", 85: "G", 87: "L" }
-// 74: Paraguay (3º D) ya confirmado por VS Sports (27/06) — Alemania (1º E) vs PY.
-// Faltan los otros 7 cuando FIFA/medios confirmen los cruces de terceros restantes.
-export const THIRDS_ASSIGN: Record<number, string> = { 74: "D" };
+// Anexo C, recién al cerrar la fase de grupos. Cerrados los grupos el 28/06, FIFA
+// asignó los equipos de los 16avos: el mapa abajo (nº de llave → letra del grupo
+// cuyo 3º entra ahí) sale de cruzar esas asignaciones reales con el esqueleto
+// (todas caen en un grupo permitido por el slot, verificado). Los 8 mejores
+// terceros fueron B, D, E, F, I, J, K, L; cada uno cayó así:
+//   74: Paraguay (3º D) · 77: Suecia (3º F) · 79: Ecuador (3º E) · 80: RD Congo (3º K)
+//   81: Bosnia (3º B) · 82: Senegal (3º I) · 85: Argelia (3º J) · 87: Ghana (3º L)
+export const THIRDS_ASSIGN: Record<number, string> = { 74: "D", 77: "F", 79: "E", 80: "K", 81: "B", 82: "I", 85: "J", 87: "L" };
