@@ -104,3 +104,61 @@ export function roundOrder(f: number): Tie[] {
 }
 
 export const thirdPlace = () => byMatch.get(103)!;
+
+// ── CALENDARIO DE ELIMINATORIAS (cuándo y dónde) ───────────────────────────────
+// El esqueleto de arriba dice QUIÉN; esto dice CUÁNDO y DÓNDE, por número de
+// partido. Horas en PARAGUAY (UTC-3 fijo). Sedes y horarios verificados contra
+// Wikipedia "2026 FIFA World Cup knockout stage" + NBC Sports (coinciden en todo).
+// `ch` queda para cuando los canales paraguayos publiquen la grilla de cada cruce;
+// sin `ch`, la agenda muestra los 5 canales apagados (como en la fase de grupos).
+export type KoSlot = { d: string; t: string; sede: string; ciudad: string; ch?: string[] };
+export const KO_SCHEDULE: Record<number, KoSlot> = {
+  // DIECISÉISAVOS — 28 jun → 3 jul
+  73: { d: "2026-06-28", t: "16:00", sede: "SoFi Stadium", ciudad: "Los Ángeles", ch: ["gen", "trece"] },
+  76: { d: "2026-06-29", t: "14:00", sede: "NRG Stadium", ciudad: "Houston" },
+  74: { d: "2026-06-29", t: "17:30", sede: "Gillette Stadium", ciudad: "Boston", ch: ["gen", "trece", "popu", "vs"] },
+  75: { d: "2026-06-29", t: "22:00", sede: "Estadio BBVA", ciudad: "Monterrey" },
+  78: { d: "2026-06-30", t: "14:00", sede: "AT&T Stadium", ciudad: "Dallas" },
+  77: { d: "2026-06-30", t: "18:00", sede: "MetLife Stadium", ciudad: "Nueva York" },
+  79: { d: "2026-06-30", t: "22:00", sede: "Estadio Azteca", ciudad: "Ciudad de México" },
+  80: { d: "2026-07-01", t: "13:00", sede: "Mercedes-Benz Stadium", ciudad: "Atlanta" },
+  82: { d: "2026-07-01", t: "17:00", sede: "Lumen Field", ciudad: "Seattle" },
+  81: { d: "2026-07-01", t: "21:00", sede: "Levi's Stadium", ciudad: "San Francisco" },
+  84: { d: "2026-07-02", t: "16:00", sede: "SoFi Stadium", ciudad: "Los Ángeles" },
+  83: { d: "2026-07-02", t: "20:00", sede: "BMO Field", ciudad: "Toronto" },
+  85: { d: "2026-07-03", t: "00:00", sede: "BC Place", ciudad: "Vancouver" },
+  88: { d: "2026-07-03", t: "15:00", sede: "AT&T Stadium", ciudad: "Dallas" },
+  86: { d: "2026-07-03", t: "19:00", sede: "Hard Rock Stadium", ciudad: "Miami" },
+  87: { d: "2026-07-03", t: "22:30", sede: "Arrowhead Stadium", ciudad: "Kansas City" },
+  // OCTAVOS — 4 → 7 jul
+  90: { d: "2026-07-04", t: "14:00", sede: "NRG Stadium", ciudad: "Houston" },
+  89: { d: "2026-07-04", t: "18:00", sede: "Lincoln Financial Field", ciudad: "Filadelfia" },
+  91: { d: "2026-07-05", t: "17:00", sede: "MetLife Stadium", ciudad: "Nueva York" },
+  92: { d: "2026-07-05", t: "21:00", sede: "Estadio Azteca", ciudad: "Ciudad de México" },
+  93: { d: "2026-07-06", t: "16:00", sede: "AT&T Stadium", ciudad: "Dallas" },
+  94: { d: "2026-07-06", t: "21:00", sede: "Lumen Field", ciudad: "Seattle" },
+  95: { d: "2026-07-07", t: "13:00", sede: "Mercedes-Benz Stadium", ciudad: "Atlanta" },
+  96: { d: "2026-07-07", t: "17:00", sede: "BC Place", ciudad: "Vancouver" },
+  // CUARTOS — 9 → 11 jul
+  97: { d: "2026-07-09", t: "17:00", sede: "Gillette Stadium", ciudad: "Boston" },
+  98: { d: "2026-07-10", t: "16:00", sede: "SoFi Stadium", ciudad: "Los Ángeles" },
+  99: { d: "2026-07-11", t: "18:00", sede: "Hard Rock Stadium", ciudad: "Miami" },
+  100: { d: "2026-07-11", t: "22:00", sede: "Arrowhead Stadium", ciudad: "Kansas City" },
+  // SEMIFINALES — 14 → 15 jul
+  101: { d: "2026-07-14", t: "16:00", sede: "AT&T Stadium", ciudad: "Dallas" },
+  102: { d: "2026-07-15", t: "16:00", sede: "Mercedes-Benz Stadium", ciudad: "Atlanta" },
+  // TERCER PUESTO — 18 jul · FINAL — 19 jul
+  103: { d: "2026-07-18", t: "18:00", sede: "Hard Rock Stadium", ciudad: "Miami" },
+  104: { d: "2026-07-19", t: "16:00", sede: "MetLife Stadium", ciudad: "Nueva York" },
+};
+
+// ── MEJORES TERCEROS → LLAVE (Anexo C) ─────────────────────────────────────────
+// Los 8 cruces que enfrentan a un "mejor tercero" son 74, 77, 79, 80, 81, 82, 85,
+// 87. Qué grupo cae en cada uno lo define FIFA con la tabla de combinaciones del
+// Anexo C, recién al cerrar la fase de grupos (≈28 jun). Hasta entonces este mapa
+// va VACÍO y esas llaves muestran el cartel "3º (…)". Al cierre se cargan las 8
+// entradas — nº de llave → letra del grupo cuyo 3º entra ahí. Ejemplo de formato:
+//   { 74: "D", 77: "F", 79: "C", 80: "K", 81: "E", 82: "A", 85: "G", 87: "L" }
+// 74: Paraguay (3º D) ya confirmado por VS Sports (27/06) — Alemania (1º E) vs PY.
+// Faltan los otros 7 cuando FIFA/medios confirmen los cruces de terceros restantes.
+export const THIRDS_ASSIGN: Record<number, string> = { 74: "D" };

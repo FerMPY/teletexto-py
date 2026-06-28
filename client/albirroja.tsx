@@ -10,7 +10,7 @@
 // contra en el peor — la diferencia de gol queda abierta).
 import { MATCHES } from "../shared/matches";
 import { canon } from "../shared/mundial";
-import type { Match, StandingGroup } from "../shared/mundial";
+import type { Match, StandingGroup, StandingRow } from "../shared/mundial";
 import { C } from "./teletext";
 import { matchState } from "./state";
 import type { Indexes } from "./state";
@@ -55,8 +55,22 @@ function finalRange(pts: Record<string, number>, open: Match[]): Range {
   return { best, worst };
 }
 
-// veredicto en lenguaje claro a partir del rango de puesto posible
-function veredicto(r: Range): { txt: string; color: string } {
+// veredicto en lenguaje claro. Con el grupo CERRADO usa la posición REAL de la
+// tabla (no enumera nada); con el grupo en curso usa el rango de puestos posibles.
+function veredicto(r: Range, ctx: { done: boolean; pos: number; inThirds: boolean; allDone: boolean }): { txt: string; color: string } {
+  const { done, pos, inThirds, allDone } = ctx;
+  if (done) {
+    if (pos <= 2) return { txt: `CLASIFICÓ A OCTAVOS — TERMINÓ ${pos}º`, color: C.g };
+    if (pos === 3) {
+      if (allDone) return inThirds
+        ? { txt: "TERMINÓ 3º · CLASIFICA ENTRE LOS 8 MEJORES TERCEROS", color: C.g }
+        : { txt: "TERMINÓ 3º · QUEDÓ AFUERA (NO ENTRE LOS 8 MEJORES TERCEROS)", color: C.r };
+      return inThirds
+        ? { txt: "TERMINÓ 3º · HOY ENTRARÍA ENTRE LOS 8 MEJORES TERCEROS — SE DEFINE AL CERRAR TODOS LOS GRUPOS", color: C.c }
+        : { txt: "TERMINÓ 3º · HOY QUEDARÍA AFUERA DE LOS MEJORES TERCEROS — SE DEFINE AL CERRAR TODOS LOS GRUPOS", color: C.c };
+    }
+    return { txt: `ELIMINADO — TERMINÓ ${pos}º, NO LLEGA A OCTAVOS`, color: C.r };
+  }
   if (r.worst <= 2) return { txt: "YA CLASIFICÓ A OCTAVOS", color: C.g };
   if (r.best >= 4) return { txt: "ELIMINADO — NO LLEGA A OCTAVOS", color: C.r };
   if (r.best === 3) return { txt: "EN EL MEJOR CASO TERMINA 3º · PASA SOLO SI ENTRA EN LOS 8 MEJORES TERCEROS", color: C.c };
@@ -64,32 +78,41 @@ function veredicto(r: Range): { txt: string; color: string } {
 }
 
 export function Albirroja({ idx, nowK, standings }: { idx: Indexes; nowK: string; standings?: StandingGroup[] }) {
-  // puntos por resultados FINALES; lo no terminado queda abierto (a enumerar)
-  const pts: Record<string, number> = {};
-  for (const t of groupTeams) pts[t] = 0;
-  const open: Match[] = [];
-  for (const m of groupMatches) {
-    const st = matchState(m, idx, nowK);
-    if (st.final && st.hs != null) {
-      const a = canon(m.a), b = canon(m.b);
-      if (st.hs > st.as!) pts[a] += 3;
-      else if (st.hs < st.as!) pts[b] += 3;
-      else { pts[a] += 1; pts[b] += 1; }
-    } else open.push(m);
-  }
-
   // jugando ahora → mejor mirá el partido, no el resumen
-  if (open.some((m) => m.py && matchState(m, idx, nowK).live)) return null;
+  if (groupMatches.some((m) => m.py && matchState(m, idx, nowK).live)) return null;
 
-  // posición y puntos REALES desde la tabla (más fiel que recalcular)
+  // posición y puntos REALES desde la tabla (autoritativa: ya incluye lo jugado)
   const grp = standings?.find((g) => g.rows.some((r) => canon(r.team) === PY));
   const pyRow = grp?.rows.find((r) => canon(r.team) === PY);
   if (!grp || !pyRow || pyRow.pj < 1) return null; // sin datos / antes de jugar: nada que decir
 
+  // base de puntos = la tabla; sólo enumeramos lo que GENUINAMENTE falta jugar
+  // (partidos a futuro). Un partido pasado sin marcador en `idx` ya está contado
+  // en la tabla — no se vuelve a abrir como "por jugar" (eso causaba el "todavía
+  // puede 1º/2º" con el grupo ya terminado).
+  const base: Record<string, number> = {};
+  for (const t of groupTeams) base[t] = 0;
+  for (const r of grp.rows) base[canon(r.team)] = r.pts;
+  const open: Match[] = groupMatches.filter((m) => { const st = matchState(m, idx, nowK); return !st.final && !st.live; });
+
   const left = 3 - pyRow.pj;
   const maxPts = pyRow.pts + left * 3;
   const rivals = open.filter((m) => m.py).map((m) => (canon(m.a) === PY ? m.b : m.a));
-  const v = veredicto(finalRange(pts, open));
+
+  // ¿cerró el grupo de Paraguay? (la última fecha es simultánea → left 0 = cerrado)
+  const done = grp.rows.every((r) => r.pj >= 3);
+  // mejores terceros del torneo + si TODOS los grupos cerraron (para un veredicto
+  // definitivo del 3º; si no, el del 3º es provisorio)
+  const allGroups = standings || [];
+  const allDone = allGroups.length > 0 && allGroups.every((g) => g.rows.length > 0 && g.rows.every((r) => r.pj >= 3));
+  const inThirds = allGroups
+    .map((g) => g.rows.find((r) => r.pos === 3))
+    .filter((r): r is StandingRow => !!r && r.pj > 0)
+    .sort((p, q) => q.pts - p.pts || q.gd - p.gd || q.gf - p.gf)
+    .slice(0, 8)
+    .some((r) => canon(r.team) === PY);
+
+  const v = veredicto(finalRange(base, open), { done, pos: pyRow.pos, inThirds, allDone });
 
   return (
     <div className="mb-3 px-2 py-1" style={{ border: "1px solid var(--tt-m)" }}>

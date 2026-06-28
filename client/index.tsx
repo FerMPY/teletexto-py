@@ -318,7 +318,7 @@ function AppInner() {
           <TeamPage team={team} idx={idx} nowK={now.key} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} onTeam={openTeam} onClose={closeTeam} standings={data?.standings} />
         ) : (
           <>
-            {page === 100 && <Agenda idx={idx} nowK={now.key} today={now.date} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} onTeam={openTeam} standings={data?.standings} />}
+            {page === 100 && <Agenda idx={idx} nowK={now.key} today={now.date} onWatch={openWatch} onProde={(mk) => { setProdeTarget(mk); setPage(300, slugify(mk)); }} onTeam={openTeam} onCuadro={() => setPage(200, "clasif")} standings={data?.standings} />}
             {page === 200 && <Tabla data={data} idx={idx} nowK={now.key} onWatch={openWatch} onTeam={openTeam} goTab={tablaTab} />}
             {page === 300 && <Prode data={data} idx={idx} nowK={now.key} nowMs={Date.now()} target={prodeTarget} />}
           </>

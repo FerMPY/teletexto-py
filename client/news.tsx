@@ -13,6 +13,7 @@ export type News = { id: string; tag: string; text: string };
 
 // Anuncios, del más reciente arriba. El id NO se reusa (es la marca de "ya visto").
 export const NEWS: News[] = [
+  { id: "elim-fechas-2026", tag: "NUEVO", text: "YA ESTÁN LAS FECHAS, HORAS (PY) Y SEDES DE LAS ELIMINATORIAS: DESDE LOS DIECISEISAVOS (28 JUN) EN LA AGENDA Y EN EL CUADRO, CON LOS EQUIPOS LLENÁNDOSE SOLOS." },
   { id: "cuadro-2026", tag: "NUEVO", text: "YA ESTÁ EL CUADRO DE ELIMINATORIAS: 1º, 2º Y LOS 8 MEJORES TERCEROS, CON EL CAMINO A LA FINAL." },
 ];
 

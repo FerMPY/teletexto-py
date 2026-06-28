@@ -23,9 +23,12 @@ el auth integrados de Lakebed (invitado local, Google en producción).
   separan algo de verdad — enumera todos los resultados posibles del grupo.
 - **P200 TABLA** — todo lo de grupos en una página, con sub-pestañas:
   **GRUPOS** (los 12 grupos), **CLASIFICACIÓN** (quiénes pasan: 1º y 2º de cada
-  grupo + los 8 mejores terceros, y el camino a la final — cuando FIFA publique
-  los cruces, ≈28 JUN, las llaves de verdad; se dibujan solas al agregar los
-  partidos de eliminatorias a `matches.ts` con `f >= 4`) y **GOLEADORES**.
+  grupo + los 8 mejores terceros, y el camino a la final — cada llave con su
+  **fecha, hora PY y sede** desde ya. Los equipos se llenan SOLOS con la tabla en
+  vivo: 1º/2º apenas se define el grupo, ganadores ronda a ronda; lo único a mano
+  son los 8 mejores terceros, que se cargan en `THIRDS_ASSIGN` (shared/bracket.ts)
+  cuando FIFA cierre la fase de grupos, ≈28 JUN) y **GOLEADORES**. El calendario
+  de eliminatorias vive en `KO_SCHEDULE` y lo resuelve `client/ko.ts`.
 - **P300 PRODE** — pronosticá antes del pitazo inicial. Exacto +3, ganador +1.
 - **P500 EN VIVO (VISOR)** — el partido en la misma página. **Trece, Unicanal y Popu TV**
   se embeben (Trece/Unicanal por su `/en-vivo`, Popu por el portal en vivo de

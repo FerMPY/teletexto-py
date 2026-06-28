@@ -21,11 +21,13 @@ for (const m of MATCHES) {
   nameBy[canon(m.a)] = m.a; nameBy[canon(m.b)] = m.b;
 }
 
-const TABS: [string, string][] = [["grupos", "GRUPOS"], ["clasif", "CLASIFICACIÓN"], ["goles", "GOLEADORES"]];
+// En eliminatorias el CUADRO importa más que las tablas de grupos → va primero y
+// es la sub-pestaña por defecto al entrar a TABLA (P200).
+const TABS: [string, string][] = [["clasif", "CLASIFICACIÓN"], ["grupos", "GRUPOS"], ["goles", "GOLEADORES"]];
 
 export function Tabla({ data, idx, nowK, onWatch, onTeam, goTab }: { data: ApiData | null; idx: Indexes; nowK: string; onWatch: (m: Match, ch: ChannelKey) => void; onTeam?: (name: string) => void; goTab?: string | null }) {
   const { markSeen } = useSeen();
-  const [tab, setTab] = useState(goTab || "grupos");
+  const [tab, setTab] = useState(goTab || "clasif");
   // deep link (#200-clasif) o "VER" del aviso → abrir la sub-pestaña pedida
   useEffect(() => { if (goTab) setTab(goTab); }, [goTab]);
   // ver el cuadro (por deep link o tocando el chip) marca el aviso como visto
